@@ -1,0 +1,12 @@
+#!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
+
+# Auto-generated runtime entry point
+set -e
+
+script_name=$(basename "$0")
+assistant_name="${script_name#nyia-}"
+
+# Set configuration path and source template
+export ASSISTANT_CONFIG="$HOME/.config/nyarlathotia/config/${assistant_name}.conf"
+source "$(dirname "$0")/assistant-template.sh"

@@ -1,0 +1,36 @@
+#!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
+
+# NyarlathotIA Runtime Dispatcher
+set -e
+
+script_dir="$(dirname "$(realpath "$0")")"
+
+# Simple dispatcher for runtime
+case "${1:-help}" in
+    list)
+        echo "Available assistants:"
+        for cmd in "$script_dir"/nyia-*; do
+            if [[ -x "$cmd" && "$cmd" != */nyia ]]; then
+                basename "$cmd"
+            fi
+        done
+        ;;
+    help|--help|-h)
+        echo "NyarlathotIA Multi-Assistant Infrastructure"
+        echo ""
+        echo "Usage:"
+        echo "  nyia list                   # List available assistants"
+        echo "  nyia-claude [options]       # Use Claude assistant"
+        echo "  nyia-gemini [options]       # Use Gemini assistant"
+        echo "  nyia-codex [options]        # Use Codex assistant"
+        echo "  nyia-opencode [options]     # Use OpenCode assistant"
+        echo ""
+        echo "For assistant help: nyia-<assistant> --help"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Use 'nyia help' for usage information"
+        exit 1
+        ;;
+esac
