@@ -6,15 +6,282 @@ set -e
 
 script_dir="$(dirname "$(realpath "$0")")"
 
-# Simple dispatcher for runtime
-case "${1:-help}" in
-    list)
-        echo "Available assistants:"
-        for cmd in "$script_dir"/nyia-*; do
-            if [[ -x "$cmd" && "$cmd" != */nyia ]]; then
-                basename "$cmd"
+# Source common functions
+source "$script_dir/common-functions.sh" 2>/dev/null || {
+    echo "Error: Could not load common functions library"
+    exit 1
+}
+
+# Configuration
+NYARLATHOTIA_HOME=$(get_nyarlathotia_home)
+CONFIG_DIR="$NYARLATHOTIA_HOME/config"
+
+# === DISPATCHER COMMANDS ===
+list_available_assistants() {
+    echo "Available NyarlathotIA Assistants:"
+    echo ""
+    
+    local found_any=false
+    
+    # Check all potential assistants (both states)
+    for config_file in "$CONFIG_DIR"/*.conf.example "$CONFIG_DIR"/*.conf; do
+        if [[ -f "$config_file" ]]; then
+            found_any=true
+            
+            # Determine state and display accordingly
+            local base_name=""
+            local status_icon=""
+            local status_text=""
+            
+            if [[ "$config_file" == *.conf.example ]]; then
+                base_name=$(basename "$config_file" .conf.example)
+                # Skip if .conf version exists (configured takes precedence)
+                [[ -f "$CONFIG_DIR/${base_name}.conf" ]] && continue
+                
+                status_icon="⚙️ "
+                status_text="(needs configuration)"
+            else
+                base_name=$(basename "$config_file" .conf)
+                status_icon="✅ "
+                status_text="(ready)"
+            fi
+            
+            printf "  %s%-12s %s\n" "$status_icon" "$base_name" "$status_text"
+        fi
+    done
+    
+    if [[ "$found_any" == "false" ]]; then
+        echo "  No assistants found in: $CONFIG_DIR"
+        echo ""
+        echo "To get started:"
+        echo "  1. Run installation: curl -fsSL https://github.com/KaizendoFr/nyarlathotia/releases/latest/download/install.sh | bash"
+        echo "  2. Configure assistant: nyia-claude --help"
+    fi
+    
+    echo ""
+}
+
+show_config_list() {
+    local show_origin="${1:-false}"
+    
+    echo "NyarlathotIA Configuration:"
+    
+    if [[ "$show_origin" == "true" ]]; then
+        # Show configuration with sources (Git pattern)
+        if [[ -n "$NYARLATHOTIA_HOME" ]]; then
+            echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME [environment]"
+        else
+            echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME [platform default]"
+        fi
+        echo "  CONFIG_DIR=$CONFIG_DIR [derived]"
+        echo "  DATA_DIR=$NYARLATHOTIA_HOME/data [derived]"
+    else
+        # Show configuration values only
+        echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME"
+        echo "  CONFIG_DIR=$CONFIG_DIR"
+        echo "  DATA_DIR=$NYARLATHOTIA_HOME/data"
+    fi
+    
+    echo ""
+    echo "Platform Information:"
+    echo "  OS: $(uname -s)"
+    echo "  Platform detected: $(uname -s)"
+    
+    if [[ -n "$XDG_CONFIG_HOME" ]]; then
+        echo "  XDG_CONFIG_HOME=$XDG_CONFIG_HOME"
+    fi
+    
+    echo ""
+}
+
+show_config_dump() {
+    echo "# NyarlathotIA Configuration Dump"
+    echo "# Generated on $(date)"
+    echo ""
+    
+    echo "# Core Configuration"
+    echo "NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME"
+    echo "CONFIG_DIR=$CONFIG_DIR"
+    
+    echo ""
+    echo "# Platform Environment"
+    echo "PLATFORM=$(uname -s)"
+    echo "HOME=$HOME"
+    [[ -n "$XDG_CONFIG_HOME" ]] && echo "XDG_CONFIG_HOME=$XDG_CONFIG_HOME"
+    [[ -n "$APPDATA" ]] && echo "APPDATA=$APPDATA"
+    
+    echo ""
+    echo "# Directory Structure"
+    echo "DATA_DIR=$NYARLATHOTIA_HOME/data"
+    
+    # Show if directories exist
+    echo ""
+    echo "# Directory Status"
+    for dir in "$NYARLATHOTIA_HOME" "$NYARLATHOTIA_HOME/data" "$CONFIG_DIR"; do
+        if [[ -d "$dir" ]]; then
+            echo "EXISTS: $dir"
+        else
+            echo "MISSING: $dir"
+        fi
+    done
+}
+
+show_config_view() {
+    echo "NyarlathotIA Effective Configuration:"
+    echo ""
+    echo "Home Directory: $NYARLATHOTIA_HOME"
+    echo "  Status: $(if [[ -d "$NYARLATHOTIA_HOME" ]]; then echo "EXISTS"; else echo "MISSING"; fi)"
+    echo ""
+    
+    echo "Available Assistants:"
+    if [[ -d "$CONFIG_DIR" ]]; then
+        for conf_file in "$CONFIG_DIR"/*.conf; do
+            if [[ -f "$conf_file" ]]; then
+                local assistant_name=$(basename "$conf_file" .conf)
+                echo "  - $assistant_name ($(basename "$conf_file"))"
             fi
         done
+    else
+        echo "  Config directory not found: $CONFIG_DIR"
+    fi
+    
+}
+
+show_global_status() {
+    echo "NyarlathotIA Global Status:"
+    echo "  Home: $NYARLATHOTIA_HOME"
+    echo "  Config directory: $CONFIG_DIR"
+    echo ""
+    
+    # Show system info
+    echo "System Information:"
+    echo "  Docker: $(command -v docker >/dev/null && echo "✅ Available" || echo "❌ Not found")"
+    echo "  Git: $(command -v git >/dev/null && echo "✅ Available" || echo "❌ Not found")"
+    echo ""
+    
+    list_available_assistants
+    
+    # Show data storage info
+    echo "Data Storage:"
+    local data_dir="$NYARLATHOTIA_HOME/data"
+    if [[ -d "$data_dir" ]]; then
+        local project_count=$(find "$data_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        echo "  Projects tracked: $project_count"
+        echo "  Data directory: $data_dir"
+    else
+        echo "  No project data found"
+    fi
+    
+    # Show global images
+    echo ""
+    echo "Docker Images:"
+    if command -v docker >/dev/null; then
+        if docker images --filter "reference=nyarlathotia-*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q .; then
+            docker images --filter "reference=nyarlathotia-*" --format "  {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})" 2>/dev/null
+        else
+            echo "  No NyarlathotIA images found"
+        fi
+    else
+        echo "  Docker not available"
+    fi
+}
+
+clean_old_images() {
+    echo "🧹 Cleaning old development images..."
+    
+    if ! command -v docker >/dev/null; then
+        print_error "Docker not available for cleanup"
+        exit 1
+    fi
+    
+    # List images that would be cleaned
+    echo ""
+    echo "Images that will be removed:"
+    docker images --filter "reference=nyarlathotia-*" --filter "dangling=true" --format "  {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  No dangling images found"
+    
+    # Ask for confirmation
+    echo ""
+    echo "⚠️  This will remove dangling NyarlathotIA images to free up space."
+    echo "   Active images will NOT be removed."
+    echo ""
+    read -p "Continue? [y/N] " -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Removing dangling images..."
+        if docker image prune --filter "label=nyarlathotia=true" --force 2>/dev/null; then
+            echo "✅ Cleanup completed"
+        else
+            echo "✅ No images to clean"
+        fi
+    else
+        echo "Cleanup cancelled"
+    fi
+}
+
+# Runtime dispatcher with full functionality
+case "${1:-help}" in
+    config)
+        # Handle configuration commands
+        if [[ -z "${2:-}" ]]; then
+            echo "Usage: nyia config <command>"
+            echo ""
+            echo "Commands:"
+            echo "  list [--show-origin]  Show configuration values"
+            echo "  dump                  Show all configuration with environment"
+            echo "  view                  Show effective configuration"
+            echo "  get <key>            Get specific configuration value"
+            echo ""
+            echo "Available keys for 'get':"
+            echo "  home, NYARLATHOTIA_HOME    Home directory path"
+            echo "  config, CONFIG_DIR         Config directory path"
+            echo "  data, DATA_DIR             Data directory path"
+            echo ""
+            echo "Examples:"
+            echo "  nyia config list --show-origin"
+            echo "  nyia config get home"
+            exit 0
+        fi
+        
+        local subcommand="$2"
+        case "$subcommand" in
+            list)
+                local show_origin="false"
+                if [[ "${3:-}" == "--show-origin" ]]; then
+                    show_origin="true"
+                fi
+                show_config_list "$show_origin"
+                ;;
+            dump)
+                show_config_dump
+                ;;
+            view)
+                show_config_view
+                ;;
+            get)
+                local key="${3:-}"
+                case "$key" in
+                    NYARLATHOTIA_HOME|home) echo "$NYARLATHOTIA_HOME" ;;
+                    CONFIG_DIR|config) echo "$CONFIG_DIR" ;;
+                    DATA_DIR|data) echo "$NYARLATHOTIA_HOME/data" ;;
+                    *) echo "Unknown config key: $key" >&2; exit 1 ;;
+                esac
+                ;;
+            *)
+                echo "Unknown config command: $subcommand" >&2
+                echo "Use 'nyia config' for usage information"
+                exit 1
+                ;;
+        esac
+        ;;
+    list)
+        list_available_assistants
+        ;;
+    status)
+        show_global_status
+        ;;
+    clean)
+        clean_old_images
         ;;
     exclusions)
         # Handle exclusions command
@@ -38,6 +305,9 @@ case "${1:-help}" in
         echo ""
         echo "COMMANDS:"
         echo "  nyia list                   # List available assistants"
+        echo "  nyia status                 # Show system status and information"
+        echo "  nyia config <command>       # Configure system settings"
+        echo "  nyia clean                  # Clean old Docker images"
         echo "  nyia exclusions [command]   # Manage file exclusions"
         echo "  nyia help                   # Show this help"
         echo ""
@@ -47,6 +317,12 @@ case "${1:-help}" in
         echo "  nyia-codex [options]        # OpenAI Codex (code generation)"
         echo "  nyia-opencode [options]     # Open-source models (local/custom)"
         echo ""
+        echo "CONFIGURATION:"
+        echo "  nyia config list [--show-origin]     # Show configuration values"
+        echo "  nyia config dump                     # Show all configuration"
+        echo "  nyia config view                     # Show effective configuration"
+        echo "  nyia config get <key>                # Get specific value"
+        echo ""
         echo "EXCLUSIONS (Security):"
         echo "  nyia exclusions init        # Create .nyarlathotia-exclude file"
         echo "  nyia exclusions list        # Show excluded files/patterns"
@@ -54,6 +330,10 @@ case "${1:-help}" in
         echo ""
         echo "EXAMPLES:"
         echo "  nyia list                             # See what's available"
+        echo "  nyia status                           # Check system status"
+        echo "  nyia config list                      # Show current configuration"
+        echo "  nyia config get home                  # Get home directory path"
+        echo "  nyia clean                            # Clean up old Docker images"
         echo "  nyia-claude --login                   # Configure Claude"
         echo "  nyia-claude -p 'Review this code'    # Use Claude"
         echo ""
