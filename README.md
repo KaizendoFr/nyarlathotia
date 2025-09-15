@@ -1,6 +1,6 @@
 # NyarlathotIA Multi-Assistant Infrastructure
 
-AI-powered development tools supporting Claude, Gemini, Codex, and OpenCode assistants.
+It’s a jail for AI development tools. Supporting the CLIs of Claude, Gemini, Codex, and OpenCode assistants.
 
 ## 🚀 Quick Start
 
@@ -28,11 +28,10 @@ nyia-claude -p "Create a Python script with tests"
 
 ## Key Features
 
-- **Docker Integration**: Isolated, reproducible environments
+- **Docker Integration**: Isolated environments
+- **Exclusion list**: Directories and files that you don’t want to share with the AI
 - **Git Awareness**: Automatic branch and context management
-- **Custom Overlays**: Extend base images with your tools
 - **Multi-Project**: Work across different codebases seamlessly
-- **Production Ready**: Clean runtime, no development bloat
 
 ## Get Help
 
@@ -49,5 +48,3 @@ nyia-claude --status         # Configuration check
 - **[GitHub Discussions](https://github.com/KaizendoFr/nyarlathotia/discussions)** - Community help
 
 ---
-
-*Runtime distribution optimized for deployment - development tools removed*
