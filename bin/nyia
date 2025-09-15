@@ -16,17 +16,53 @@ case "${1:-help}" in
             fi
         done
         ;;
+    exclusions)
+        # Handle exclusions command
+        shift
+        exclusions_lib="$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"
+        if [[ -f "$exclusions_lib" ]]; then
+            source "$exclusions_lib"
+            handle_exclusions_command "$@"
+        else
+            echo "Error: Exclusions system not installed properly"
+            exit 1
+        fi
+        ;;
     help|--help|-h)
         echo "NyarlathotIA Multi-Assistant Infrastructure"
+        echo "AI-powered development assistants for your projects"
         echo ""
-        echo "Usage:"
+        echo "QUICK START:"
+        echo "  1. Configure an assistant: nyia-codex --help"
+        echo "  2. Start using: nyia-codex -p 'Write a hello world'"
+        echo ""
+        echo "COMMANDS:"
         echo "  nyia list                   # List available assistants"
-        echo "  nyia-claude [options]       # Use Claude assistant"
-        echo "  nyia-gemini [options]       # Use Gemini assistant"
-        echo "  nyia-codex [options]        # Use Codex assistant"
-        echo "  nyia-opencode [options]     # Use OpenCode assistant"
+        echo "  nyia exclusions [command]   # Manage file exclusions"
+        echo "  nyia help                   # Show this help"
         echo ""
-        echo "For assistant help: nyia-<assistant> --help"
+        echo "ASSISTANTS:"
+        echo "  nyia-claude [options]       # Anthropic Claude (advanced reasoning)"
+        echo "  nyia-gemini [options]       # Google Gemini (multimodal)"
+        echo "  nyia-codex [options]        # OpenAI Codex (code generation)"
+        echo "  nyia-opencode [options]     # Open-source models (local/custom)"
+        echo ""
+        echo "EXCLUSIONS (Security):"
+        echo "  nyia exclusions init        # Create .nyarlathotia-exclude file"
+        echo "  nyia exclusions list        # Show excluded files/patterns"
+        echo "  nyia exclusions status      # Check exclusion system status"
+        echo ""
+        echo "EXAMPLES:"
+        echo "  nyia list                             # See what's available"
+        echo "  nyia-claude --login                   # Configure Claude"
+        echo "  nyia-claude -p 'Review this code'    # Use Claude"
+        echo ""
+        echo "TROUBLESHOOTING:"
+        echo "  - Config not found? Check ~/.config/nyarlathotia/config/"
+        echo "  - Docker issues? Ensure Docker is running and you have access"
+        echo "  - Need help? Visit: https://github.com/KaizendoFr/nyarlathotia"
+        echo ""
+        echo "For assistant-specific help: nyia-<assistant> --help"
         ;;
     *)
         echo "Unknown command: $1"

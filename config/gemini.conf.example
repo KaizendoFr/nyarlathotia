@@ -1,0 +1,31 @@
+# NyarlathotIA Gemini Assistant Configuration
+# Configuration for the Google Gemini AI assistant
+
+# === ASSISTANT IDENTITY ===
+ASSISTANT_NAME="gemini"
+ASSISTANT_CLI="gemini"
+
+# === DOCKER CONFIGURATION ===
+BASE_IMAGE_NAME="nyarlathotia-gemini"  # Base name without tag
+DOCKERFILE_PATH="docker/gemini"
+CONFIG_FILENAME="GEMINI.md"
+DEFAULT_USER="node"
+BASE_DOCKER_IMAGE="node:22-alpine"
+
+# === DEV IMAGE SETTINGS ===
+ALLOW_DEV_IMAGES="true"
+FORCE_PRODUCTION="false"
+
+# === PROJECT CONTEXT ===
+CONTEXT_DIR_NAME=".nyarlathotia/gemini"
+CONFIG_DIR_NAME=".nyarlathotia/gemini"
+
+
+# === AUTHENTICATION ===
+AUTH_METHOD="auto"  # Supports multiple auth methods (OAuth, API key, Vertex AI)
+API_KEY_ENV="GEMINI_API_KEY"  # Google AI Studio API key
+
+# === OPTIONAL CONFIGURATION ===
+# Required for some account types (Workspace, enterprise, outside supported regions)
+export GOOGLE_CLOUD_PROJECT="your-project-name"
+

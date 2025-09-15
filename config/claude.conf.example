@@ -1,0 +1,26 @@
+# NyarlathotIA Claude Assistant Configuration
+# Professional configuration for the Claude AI assistant
+
+# === ASSISTANT IDENTITY ===
+ASSISTANT_NAME="claude"
+ASSISTANT_CLI="claude"
+
+# === DOCKER CONFIGURATION ===
+BASE_IMAGE_NAME="nyarlathotia-claude"  # Base name without tag
+DOCKERFILE_PATH="docker/claude"
+CONFIG_FILENAME="CLAUDE.md"
+DEFAULT_USER="node"
+BASE_DOCKER_IMAGE="node:20-alpine"
+
+# === DEV IMAGE SETTINGS ===
+ALLOW_DEV_IMAGES="true"
+FORCE_PRODUCTION="false"
+
+# === PROJECT CONTEXT ===
+CONTEXT_DIR_NAME=".nyarlathotia/claude"
+CONFIG_DIR_NAME=".nyarlathotia/claude"
+
+
+# === AUTHENTICATION ===
+AUTH_METHOD="device_code"  # claude auth login --device-code
+API_KEY_ENV=""             # No API key needed for Claude

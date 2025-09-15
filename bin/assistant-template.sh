@@ -42,7 +42,20 @@ if [[ ! -f "$ASSISTANT_CONFIG" ]]; then
                 ls "$nyia_home/config"/*.conf | sed 's/^/  /'
             else
                 print_info "  No configuration files found in default location"
-                print_info "  Contact your administrator to install the assistant"
+                
+                # Check for example files that can be used
+                if ls "$nyia_home/config"/*.conf.example 2>/dev/null; then
+                    print_info ""
+                    print_info "  Example configuration files found:"
+                    ls "$nyia_home/config"/*.conf.example | sed 's/^/    /'
+                    print_info ""
+                    print_info "  To fix, copy the example to create your config:"
+                    print_info "    cp $nyia_home/config/${assistant_name}.conf.example $nyia_home/config/${assistant_name}.conf"
+                    print_info "    Then edit the file to add your settings"
+                else
+                    print_info "  Configuration templates may not have been installed properly"
+                    print_info "  Please reinstall or contact support"
+                fi
             fi
         fi
         exit 1

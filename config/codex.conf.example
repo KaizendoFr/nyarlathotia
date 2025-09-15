@@ -1,0 +1,26 @@
+# NyarlathotIA Codex Configuration
+
+# === ASSISTANT IDENTITY ===
+ASSISTANT_NAME="codex"
+ASSISTANT_CLI="codex"
+
+# === DOCKER CONFIGURATION ===
+BASE_IMAGE_NAME="nyarlathotia-codex"
+DOCKERFILE_PATH="docker/codex"
+CONFIG_FILENAME="CODEX.md"
+DEFAULT_USER="node"
+BASE_DOCKER_IMAGE="node:20-alpine"
+
+# === DEV IMAGE SETTINGS ===
+ALLOW_DEV_IMAGES="true"
+FORCE_PRODUCTION="false"
+
+# === PROJECT CONTEXT ===
+CONTEXT_DIR_NAME=".nyarlathotia/codex"
+CONFIG_DIR_NAME=".nyarlathotia/codex"
+
+
+# === AUTHENTICATION ===
+AUTH_METHOD="chatgpt_signin"
+API_KEY_ENV="OPENAI_API_KEY"
+

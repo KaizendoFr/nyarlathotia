@@ -22,6 +22,23 @@ echo "✅ Installed commands to $BIN_DIR"
 cp -r lib/* "$LIB_DIR/"
 echo "✅ Installed libraries to $LIB_DIR"
 
+# Copy and initialize configs if they don't exist
+if [[ -d config ]]; then
+    for conf_example in config/*.conf.example; do
+        if [[ -f "$conf_example" ]]; then
+            basename_conf=$(basename "$conf_example" .example)
+            target_conf="$CONFIG_DIR/$basename_conf"
+            
+            if [[ ! -f "$target_conf" ]]; then
+                cp "$conf_example" "$target_conf"
+                echo "✅ Created config: $basename_conf"
+            else
+                echo "ℹ️  Config exists: $basename_conf (skipped)"
+            fi
+        fi
+    done
+fi
+
 # Fix paths in assistant-template.sh for installed layout
 if [[ -f "$BIN_DIR/assistant-template.sh" ]]; then
     # Fix cli-parser.sh path

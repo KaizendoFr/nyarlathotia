@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# NyarlathotIA OpenCode Configuration Example
+# Copy this file to opencode.conf and customize as needed
+
+# === ASSISTANT IDENTITY ===
+ASSISTANT_NAME="opencode"
+ASSISTANT_CLI="opencode"
+
+# === DOCKER CONFIGURATION ===
+BASE_IMAGE_NAME="nyarlathotia-opencode"
+DOCKERFILE_PATH="docker/opencode"
+CONFIG_FILENAME="OPENCODE.md"
+DEFAULT_USER="node"
+BASE_DOCKER_IMAGE="node:20-alpine"
+
+# === DEV IMAGE SETTINGS ===
+ALLOW_DEV_IMAGES="true"
+FORCE_PRODUCTION="false"
+
+# === PROJECT CONTEXT ===
+CONTEXT_DIR_NAME=".nyarlathotia/opencode"
+CONFIG_DIR_NAME=".nyarlathotia/opencode"
+
+# === AUTHENTICATION ===
+# For local models (Ollama), leave empty
+# For cloud providers, set to specific API key variable
+AUTH_METHOD="multi_provider"
+API_KEY_ENV=""
+
+# === OLLAMA INTEGRATION ===
+# Default Ollama configuration
+OLLAMA_HOST="localhost:11434"
+ENABLE_OLLAMA="true"
+OLLAMA_DEFAULT_MODEL="llama3.2"
+OLLAMA_AUTO_SETUP="true"
+
+# Auto-setup configuration:
+# OLLAMA_AUTO_SETUP="true"   # Auto-detect and populate all available models (default)
+# OLLAMA_AUTO_SETUP="false"  # Disable auto-detection, use manual configuration
+# OLLAMA_FILTER_TOOLS="true" # Only include models that support tool calling (default)
+# OLLAMA_FILTER_TOOLS="false" # Include all models regardless of tool support
+
+# Alternative Ollama configurations:
+# OLLAMA_HOST="host.docker.internal:11434"  # For Docker Desktop
+# OLLAMA_HOST="127.0.0.1:11434"            # Alternative localhost
+# OLLAMA_DEFAULT_MODEL="codellama"         # For coding tasks
+# OLLAMA_DEFAULT_MODEL="mistral"           # Alternative model
+
+# === CLOUD PROVIDER EXAMPLES ===
+# For OpenAI: set AUTH_METHOD="openai" and API_KEY_ENV="OPENAI_API_KEY"
+# For Anthropic: set AUTH_METHOD="anthropic" and API_KEY_ENV="ANTHROPIC_API_KEY"
+
+# === NETWORK CONFIGURATION ===
+DOCKER_NETWORK_MODE="host"
+
