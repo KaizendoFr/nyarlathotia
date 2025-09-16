@@ -655,6 +655,26 @@ check_git_clean_state() {
     return 0
 }
 
+# Runtime-safe disk space check (available in both dev and runtime)
+check_disk_space() {
+    local project_path="$1"
+    
+    # Simple check that works in all environments
+    if command -v df >/dev/null 2>&1; then
+        local available_mb=$(df "$project_path" 2>/dev/null | awk 'NR==2 {print int($4/1024)}' 2>/dev/null)
+        local min_required_mb=1024  # 1GB minimum
+        
+        if [[ -n "$available_mb" && "$available_mb" -lt "$min_required_mb" ]]; then
+            print_warning "Low disk space: ${available_mb}MB available"
+            print_info "Recommended: At least ${min_required_mb}MB for container operations"
+            print_fix "Free up disk space or use different directory"
+        fi
+    fi
+    
+    return 0
+}
+
+# Note: check_disk_space() moved above to be runtime-safe
 
 # Fast requirements check (< 200ms)
 check_requirements_fast() {
@@ -814,6 +834,48 @@ get_prompt_filename() {
         opencode) echo "OPENCODE.md" ;;
         *) echo "${assistant_cli^^}.md" ;;
     esac
+}
+
+# Runtime-safe git exclusions helper (needed for end users)
+check_git_exclusions() {
+    local project_path="$1"
+    local prompt_filename="$2"
+    
+    # Skip if not a git repository
+    if [[ ! -d "$project_path/.git" ]]; then
+        return 0
+    fi
+    
+    local exclude_file="$project_path/.git/info/exclude"
+    
+    # Ensure exclude file exists
+    mkdir -p "$(dirname "$exclude_file")"
+    touch "$exclude_file"
+    
+    # Check if this specific file is already excluded
+    if grep -q "^$prompt_filename$" "$exclude_file" 2>/dev/null; then
+        return 0  # Already excluded
+    fi
+    
+    # Ask user about this specific file
+    echo ""
+    print_info "NyarlathotIA Setup: Git Exclusions"
+    echo "NyarlathotIA will create a symlink to generated prompt file:"
+    echo "  $prompt_filename -> .nyarlathotia/[assistant]/$prompt_filename"
+    echo ""
+    echo "This symlink allows the assistant to find its prompt."
+    echo "Would you like to exclude $prompt_filename from git tracking?"
+    echo "(Uses .git/info/exclude - local only, never committed)"
+    echo ""
+    read -p "Exclude $prompt_filename from git? [Y/n]: " response
+    
+    # Add this file to exclusions
+    if [[ ! "$response" =~ ^[Nn]$ ]]; then
+        echo "$prompt_filename" >> "$exclude_file"
+        print_success "Added $prompt_filename to .git/info/exclude"
+    else
+        print_info "Skipped git exclusion for $prompt_filename"
+    fi
 }
 
 

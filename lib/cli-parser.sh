@@ -21,6 +21,7 @@ export SHOW_HELP="false"
 export SHOW_STATUS="false"
 export VERBOSE="false"
 export LOGIN_ONLY="false"
+export CHECK_REQUIREMENTS="false"  # Moved outside DEV_BUILD - needed in runtime
 export SKIP_CHECKS="false"
 export SHELL_MODE="false"
 export SET_API_KEY="false"
@@ -64,6 +65,7 @@ declare -A ASSISTANT_ARGS=(
     ["--build-custom-image"]="Build custom Docker image with your overlays (power users)"
     ["--setup"]="Interactive model/provider setup (OpenCode)"
     ["--login"]="Authenticate using the assistant container"
+    ["--check-requirements"]="Check system requirements (Git, Docker, permissions)"
     ["--skip-checks"]="Skip automatic requirements checking"
     ["--shell"]="Start interactive bash shell in container"
     ["--set-api-key"]="Helper to set OpenAI API key for team plan users"
@@ -328,6 +330,10 @@ parse_assistant_args() {
                 ;;
             --login)
                 LOGIN_ONLY="true"
+                shift
+                ;;
+            --check-requirements)
+                CHECK_REQUIREMENTS="true"
                 shift
                 ;;
             --skip-checks)
