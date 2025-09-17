@@ -54,6 +54,7 @@ If you cannot find context files, CREATE them before proceeding.
 ```
 .nyarlathotia/
 ├── todo.md                    # Kanban board - UPDATE after EVERY task
+├── dev-tools/                 # see Development Helper Scripts section below
 ├── plans/                     # Detailed plans - CREATE for complex tasks
 │   ├── 01-feature-auth.md     # Numbered for sequencing
 │   ├── 02-fix-performance.md  # Clear, specific names
@@ -73,6 +74,55 @@ If you cannot find context files, CREATE them before proceeding.
 3. **Add new todos**: When discovering new tasks during work
 4. **Reference plans**: Every non-trivial todo MUST reference a plan file
 5. **Keep it current**: Update immediately after status changes
+
+## Development Helper Scripts [MANDATORY POLICY]
+
+### Script Classification - You MUST distinguish:
+
+**User-Facing Scripts (Part of Product)**:
+- Scripts that users need and use as part of the product
+- Testing infrastructure, build scripts, product features
+- NEVER move or reorganize these without explicit user request
+- Examples: `scripts/preprocess-runtime.sh`, `tests/run-*.sh`, product CLIs
+
+**Development Helper Scripts (Assistant Tools)**:
+- Scripts YOU create to help with development/debugging tasks
+- Temporary tools, debugging aids, analysis scripts
+- Should be clearly marked and organized separately
+- Examples: `./tmp/test-*.sh`, debugging scripts you write
+
+### Development Helper Requirements - You MUST:
+
+1. **Mark ALL development helpers** with standard header:
+   ```bash
+   #!/bin/bash
+   # DEVELOPMENT HELPER SCRIPT - NOT FOR USER USE
+   # Purpose: [Brief description of what this helps with]
+   # Created by: [Assistant name] on [date]
+   # Usage: [How to use this tool]
+   ```
+
+2. **Organize in .nyarlathotia/dev-tools/** directory structure:
+   - `testing/` - Debugging and testing helpers
+   - `automation/` - Build and deployment automation
+   - `analysis/` - Code and performance analysis tools
+
+3. **Never mix** development helpers with user-facing product scripts
+
+4. **Clean up** temporary helpers after completing tasks
+
+5. **Document** any permanent helpers in dev-tools/README.md
+
+### When to Create Development Helpers:
+- **Complex debugging**: Multi-step debugging processes
+- **Repetitive tasks**: Tasks you'll do multiple times
+- **Analysis needs**: Code analysis, performance checking
+- **Testing scenarios**: Specific test setups or validations
+
+### When NOT to Create Helpers:
+- **One-time tasks**: Simple commands you'll run once
+- **User features**: Anything the user might need
+- **Product functionality**: Core product capabilities
 
 ### Todo.md Format - You MUST follow:
 ```markdown
