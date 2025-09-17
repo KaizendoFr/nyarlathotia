@@ -493,8 +493,8 @@ get_target_image() {
     local build_mode="$3"
     
 
-    # Runtime: Always use registry image
-    local assistant_name=$(basename "$base_name" | sed 's/^nyarlathotia-//')
+    # Runtime: Always use registry image with full name
+    local assistant_name=$(basename "$base_name")
     local registry=$(get_docker_registry)
     echo "${registry}/${assistant_name}:latest"
 }
