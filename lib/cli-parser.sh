@@ -224,11 +224,12 @@ Examples:
   nyia-${assistant_name} --status              # Check configuration
 EOF
 
+    echo ""
+    echo "  # End-user examples:"
+    local registry=$(get_docker_registry)
     cat << EOF
-
-  # End-user examples:
   cat > ~/.config/nyarlathotia/${assistant_name}/overlay/Dockerfile << 'OVERLAY'
-FROM ghcr.io/nyarlathotia/${assistant_name}:latest
+FROM ${registry}/nyarlathotia-${assistant_name}:latest
 RUN apt-get update && apt-get install -y your-tools
 OVERLAY
   nyia-${assistant_name} --build-custom-image  # Build custom image

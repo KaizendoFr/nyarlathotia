@@ -606,13 +606,13 @@ get_docker_registry() {
     
     # Developer testing override - force registry instead of local
     if [[ "${NYIA_FORCE_REGISTRY:-}" == "true" ]]; then
-        echo "${NYIA_REGISTRY:-ghcr.io/kaizendofr}"
+        echo "${NYIA_REGISTRY:-ghcr.io/kaizendofr/nyarlathotia}"
         return
     fi
     
     # Backward compatibility (temporary - will be removed)
     if [[ "${NYIA_USE_GHCR:-}" == "true" ]]; then
-        echo "${NYIA_REGISTRY:-ghcr.io/${NYIA_GITHUB_USER:-kaizendofr}}"
+        echo "${NYIA_REGISTRY:-ghcr.io/${NYIA_GITHUB_USER:-kaizendofr}/nyarlathotia}"
         return
     fi
     
@@ -624,8 +624,8 @@ get_docker_registry() {
     fi
     
     
-    # Runtime default: always use registry
-    echo "${NYIA_REGISTRY:-ghcr.io/kaizendofr}"
+    # Runtime default: always use registry - public repo namespace
+    echo "${NYIA_REGISTRY:-ghcr.io/kaizendofr/nyarlathotia}"
 }
 
 # Get full image name with registry prefix

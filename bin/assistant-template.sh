@@ -303,7 +303,8 @@ show_assistant_status() {
     echo ""
     echo "=== Overlay Documentation ==="
     echo "Create custom Dockerfile at overlay location:"
-    echo "  FROM ghcr.io/nyarlathotia/$assistant_name:latest"
+    local registry=$(get_docker_registry)
+    echo "  FROM ${registry}/nyarlathotia-${assistant_name}:latest"
     echo "  RUN apt-get update && apt-get install -y your-tools"
     echo ""
     echo "Then build: nyia-$assistant_name --build-custom-image"

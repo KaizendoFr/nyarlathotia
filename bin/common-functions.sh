@@ -935,8 +935,9 @@ determine_overlay_base_image() {
     local -a previous_tags=("$@")
     
     if [[ $current_step -eq 0 ]]; then
-        # Runtime: Use registry image
-        echo "ghcr.io/nyarlathotia/$assistant_name:latest"
+        # Runtime: Use registry image with proper namespace
+        local registry=$(get_docker_registry)
+        echo "${registry}/nyarlathotia-${assistant_name}:latest"
     else
         # Subsequent overlays: use previous overlay output
         echo "${previous_tags[$((current_step-1))]}"
@@ -948,8 +949,8 @@ build_custom_image() {
     local assistant_name="$1"
     
     # Always use ghcr.io as base (end-users don't build from source)
-    local registry="ghcr.io/nyarlathotia"
-    local base_image="${registry}/${assistant_name}:latest"
+    local registry=$(get_docker_registry)
+    local base_image="${registry}/nyarlathotia-${assistant_name}:latest"
     
     # Check for Docker
     if ! command -v docker >/dev/null 2>&1; then
@@ -1611,7 +1612,8 @@ login_assistant() {
     if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_status "Image not found: $full_image_name"
         print_status "Pulling image from registry for login..."
-        local registry_image="ghcr.io/nyarlathotia/$assistant_cli:latest"
+        local registry=$(get_docker_registry)
+        local registry_image="${registry}/nyarlathotia-${assistant_cli}:latest"
         if ! docker pull "$registry_image"; then
             print_error "Failed to pull image: $registry_image"
             exit 1
@@ -1805,7 +1807,8 @@ show_assistant_status() {
     # Show image information
 
     # Runtime: Show registry image status
-    local registry_image="ghcr.io/nyarlathotia/$assistant_name:latest"
+    local registry=$(get_docker_registry)
+    local registry_image="${registry}/nyarlathotia-${assistant_name}:latest"
     echo "  Image: $registry_image (registry)"
     if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "$registry_image"; then
         echo "  Status: ✅ Available locally"
@@ -1836,7 +1839,8 @@ show_assistant_status() {
     # Check if current Docker image exists
 
     # Runtime: Check registry image availability
-    local registry_image="ghcr.io/nyarlathotia/$assistant_name:latest"
+    local registry=$(get_docker_registry)
+    local registry_image="${registry}/nyarlathotia-${assistant_name}:latest"
     if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "$registry_image"; then
         echo "  Current image: ✅ Ready"
     else
@@ -2024,7 +2028,8 @@ run_assistant() {
             echo ""
 
             print_status "Pulling image from registry..."
-            local registry_image="ghcr.io/nyarlathotia/$assistant_cli:latest"
+            local registry=$(get_docker_registry)
+            local registry_image="${registry}/nyarlathotia-${assistant_cli}:latest"
             if ! docker pull "$registry_image"; then
                 print_error "Failed to pull image: $registry_image"
                 print_info "💡 Contact administrator if registry access issues persist"
