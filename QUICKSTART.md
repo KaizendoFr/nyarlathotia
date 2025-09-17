@@ -1,6 +1,6 @@
 # NyarlathotIA Quick Start
 
-Get up and running with AI-powered development assistants in under 2 minutes.
+Get up and running with AI-powered development assistants in a leash in under 2 minutes.
 
 ## Install
 
