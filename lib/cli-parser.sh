@@ -7,6 +7,9 @@
 
 set -e
 
+# Source bash 3.2 compatibility layer for macOS
+source "$(dirname "${BASH_SOURCE[0]}")/bash32-compat.sh" 2>/dev/null || true
+
 # Load input validation functions for security
 cli_parser_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 if [[ -f "$cli_parser_dir/input-validation.sh" ]]; then
@@ -49,37 +52,65 @@ export REMAINING_ARGS=()
 export SCRIPT_TYPE=""  # "dispatcher" or "assistant"
 
 # === ARGUMENT DEFINITIONS ===
-declare -A GLOBAL_ARGS=(
-    ["--help,-h"]="Show help information"
-    ["--verbose,-v"]="Enable verbose output"
-    ["--path"]="Work on different project directory"
-)
+# Using functions for bash 3.2 compatibility (instead of associative arrays)
 
-declare -A ASSISTANT_ARGS=(
-    ["--prompt-system"]="Override system prompt (use ++ prefix to append)"
-    ["--image"]="Select specific Docker image (tag or repo:tag)"
-    ["--status"]="Show assistant status, configs, and available overlays"
-    ["--list-images"]="List all available Docker images for this assistant"
-    ["--base-branch"]="Specify Git base branch to work from"
-    ["--work-branch"]="Reuse existing work branch for your work"
-    ["--build-custom-image"]="Build custom Docker image with your overlays (power users)"
-    ["--setup"]="Interactive model/provider setup (OpenCode)"
-    ["--login"]="Authenticate using the assistant container"
-    ["--check-requirements"]="Check system requirements (Git, Docker, permissions)"
-    ["--skip-checks"]="Skip automatic requirements checking"
-    ["--shell"]="Start interactive bash shell in container"
-    ["--set-api-key"]="Helper to set OpenAI API key for team plan users"
-    ["--disable-exclusions"]="Disable mount exclusions for this session"
-    ["--prompt,-p"]="Explicit user prompt (required for non-interactive mode)"
-)
+# Get description for global arguments
+get_global_arg_desc() {
+    case "$1" in
+        "--help,-h") echo "Show help information" ;;
+        "--verbose,-v") echo "Enable verbose output" ;;
+        "--path") echo "Work on different project directory" ;;
+        *) echo "" ;;
+    esac
+}
 
-declare -A DISPATCHER_ARGS=(
-    ["config"]="Configuration management (list, dump, view, get)"
-    ["list"]="List all available assistants"
-    ["status"]="Show global NyarlathotIA status"
-    ["exclusions"]="Manage mount exclusions for security"
-    ["help"]="Show comprehensive help"
-)
+# Get all global arguments
+get_global_args() {
+    echo "--help,-h --verbose,-v --path"
+}
+
+# Get description for assistant arguments
+get_assistant_arg_desc() {
+    case "$1" in
+        "--prompt-system") echo "Override system prompt (use ++ prefix to append)" ;;
+        "--image") echo "Select specific Docker image (tag or repo:tag)" ;;
+        "--status") echo "Show assistant status, configs, and available overlays" ;;
+        "--list-images") echo "List all available Docker images for this assistant" ;;
+        "--base-branch") echo "Specify Git base branch to work from" ;;
+        "--work-branch") echo "Reuse existing work branch for your work" ;;
+        "--build-custom-image") echo "Build custom Docker image with your overlays (power users)" ;;
+        "--setup") echo "Interactive model/provider setup (OpenCode)" ;;
+        "--login") echo "Authenticate using the assistant container" ;;
+        "--check-requirements") echo "Check system requirements (Git, Docker, permissions)" ;;
+        "--skip-checks") echo "Skip automatic requirements checking" ;;
+        "--shell") echo "Start interactive bash shell in container" ;;
+        "--set-api-key") echo "Helper to set OpenAI API key for team plan users" ;;
+        "--disable-exclusions") echo "Disable mount exclusions for this session" ;;
+        "--prompt,-p") echo "Explicit user prompt (required for non-interactive mode)" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Get all assistant arguments (for iteration)
+get_assistant_args() {
+    echo "--prompt-system --image --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p"
+}
+
+# Get description for dispatcher arguments
+get_dispatcher_arg_desc() {
+    case "$1" in
+        "config") echo "Configuration management (list, dump, view, get)" ;;
+        "list") echo "List all available assistants" ;;
+        "status") echo "Show global NyarlathotIA status" ;;
+        "exclusions") echo "Manage mount exclusions for security" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Get all dispatcher arguments (for iteration)
+get_dispatcher_args() {
+    echo "config list status exclusions"
+}
 
 # === HELP SYSTEM ===
 show_dispatcher_help() {
@@ -94,8 +125,9 @@ Usage:
 System Commands:
 EOF
     
-    for arg in "${!DISPATCHER_ARGS[@]}"; do
-        printf "  %-20s # %s\n" "$arg" "${DISPATCHER_ARGS[$arg]}"
+    for arg in $(get_dispatcher_args); do
+        desc=$(get_dispatcher_arg_desc "$arg")
+        printf "  %-20s # %s\n" "$arg" "$desc"
     done
     
     cat << EOF
@@ -108,8 +140,9 @@ Assistant Access (use direct commands):
 Global Options:
 EOF
     
-    for arg in "${!GLOBAL_ARGS[@]}"; do
-        printf "  %-20s # %s\n" "$arg" "${GLOBAL_ARGS[$arg]}"
+    for arg in $(get_global_args); do
+        desc=$(get_global_arg_desc "$arg")
+        printf "  %-20s # %s\n" "$arg" "$desc"
     done
     
     cat << EOF

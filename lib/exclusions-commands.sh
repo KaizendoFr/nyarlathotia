@@ -9,6 +9,9 @@ if ! declare -f is_exclusions_cache_valid >/dev/null 2>&1; then
     source "$(dirname "${BASH_SOURCE[0]}")/exclusions-cache-utils.sh" 2>/dev/null || true
 fi
 
+# Source bash 3.2 compatibility layer for macOS
+source "$(dirname "${BASH_SOURCE[0]}")/bash32-compat.sh"
+
 # Ensure mount-exclusions library is loaded
 if ! declare -f get_exclusion_patterns >/dev/null 2>&1; then
     source "$(dirname "${BASH_SOURCE[0]}")/mount-exclusions.sh" 2>/dev/null || {
@@ -94,28 +97,46 @@ exclusions_list() {
         return 0
     fi
     
-    # Use associative arrays to track unique matches
-    declare -A excluded_files
-    declare -A excluded_dirs
-    declare -A system_files
-    declare -A system_dirs
+    # Use associative arrays to track unique matches (bash 3.2 compatible)
+    ba_init excluded_files
+    ba_init excluded_dirs
+    ba_init system_files
+    ba_init system_dirs
+    
+    # Track counts separately for bash 3.2 compatibility
+    local excluded_files_count=0
+    local excluded_dirs_count=0
+    local system_files_count=0
+    local system_dirs_count=0
     
     # Check if cache is valid and use it
     if is_exclusions_cache_valid "$project_path"; then
         # Read from cache
         if read_cached_exclusions "$project_path"; then
-            # Populate associative arrays from cache
+            # Populate associative arrays from cache (bash 3.2 compatible)
             for file in "${CACHED_EXCLUDED_FILES[@]}"; do
-                [[ -n "$file" ]] && excluded_files["$file"]=1
+                if [[ -n "$file" ]]; then
+                    ba_set excluded_files "$file" "1"
+                    excluded_files_count=$((excluded_files_count + 1))
+                fi
             done
             for dir in "${CACHED_EXCLUDED_DIRS[@]}"; do
-                [[ -n "$dir" ]] && excluded_dirs["$dir"]=1
+                if [[ -n "$dir" ]]; then
+                    ba_set excluded_dirs "$dir" "1"
+                    excluded_dirs_count=$((excluded_dirs_count + 1))
+                fi
             done
             for file in "${CACHED_SYSTEM_FILES[@]}"; do
-                [[ -n "$file" ]] && system_files["$file"]=1
+                if [[ -n "$file" ]]; then
+                    ba_set system_files "$file" "1"
+                    system_files_count=$((system_files_count + 1))
+                fi
             done
             for dir in "${CACHED_SYSTEM_DIRS[@]}"; do
-                [[ -n "$dir" ]] && system_dirs["$dir"]=1
+                if [[ -n "$dir" ]]; then
+                    ba_set system_dirs "$dir" "1"
+                    system_dirs_count=$((system_dirs_count + 1))
+                fi
             done
         fi
     else
@@ -144,11 +165,17 @@ exclusions_list() {
                 
                 # Check if this is a NyarlathotIA system file
                 if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    system_files["$rel_path"]=1
-                    SCAN_SYSTEM_FILES+=("$rel_path")
+                    if ! ba_exists system_files "$rel_path"; then
+                        ba_set system_files "$rel_path" "1"
+                        system_files_count=$((system_files_count + 1))
+                        SCAN_SYSTEM_FILES+=("$rel_path")
+                    fi
                 else
-                    excluded_files["$rel_path"]=1
-                    SCAN_EXCLUDED_FILES+=("$rel_path")
+                    if ! ba_exists excluded_files "$rel_path"; then
+                        ba_set excluded_files "$rel_path" "1"
+                        excluded_files_count=$((excluded_files_count + 1))
+                        SCAN_EXCLUDED_FILES+=("$rel_path")
+                    fi
                 fi
             done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
         done < <(get_exclusion_patterns "$project_path" | tr ' ' '\n')
@@ -160,11 +187,17 @@ exclusions_list() {
                 
                 # Check if this is a NyarlathotIA system directory
                 if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    system_dirs["$rel_path"]=1
-                    SCAN_SYSTEM_DIRS+=("$rel_path")
+                    if ! ba_exists system_dirs "$rel_path"; then
+                        ba_set system_dirs "$rel_path" "1"
+                        system_dirs_count=$((system_dirs_count + 1))
+                        SCAN_SYSTEM_DIRS+=("$rel_path")
+                    fi
                 else
-                    excluded_dirs["$rel_path"]=1
-                    SCAN_EXCLUDED_DIRS+=("$rel_path")
+                    if ! ba_exists excluded_dirs "$rel_path"; then
+                        ba_set excluded_dirs "$rel_path" "1"
+                        excluded_dirs_count=$((excluded_dirs_count + 1))
+                        SCAN_EXCLUDED_DIRS+=("$rel_path")
+                    fi
                 fi
             done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
         done < <(get_exclusion_dirs "$project_path" | tr ' ' '\n')
@@ -173,52 +206,52 @@ exclusions_list() {
         write_exclusions_cache "$project_path"
     fi
     
-    # Display results
+    # Display results (bash 3.2 compatible)
     echo "Files that will be excluded:"
-    if [[ ${#excluded_files[@]} -eq 0 ]]; then
+    if [[ $excluded_files_count -eq 0 ]]; then
         echo "  (none found)"
     else
-        for file in "${!excluded_files[@]}"; do
+        for file in $(ba_keys excluded_files); do
             echo "  🔒 $file"
         done | sort
     fi
     
     echo ""
     echo "Directories that will be excluded:"
-    if [[ ${#excluded_dirs[@]} -eq 0 ]]; then
+    if [[ $excluded_dirs_count -eq 0 ]]; then
         echo "  (none found)"
     else
-        for dir in "${!excluded_dirs[@]}"; do
+        for dir in $(ba_keys excluded_dirs); do
             echo "  📁 $dir/"
         done | sort
     fi
     
     # Show NyarlathotIA system files if any (not excluded)
-    if [[ ${#system_files[@]} -gt 0 || ${#system_dirs[@]} -gt 0 ]]; then
+    if [[ $system_files_count -gt 0 || $system_dirs_count -gt 0 ]]; then
         echo ""
         echo "NyarlathotIA system files (NOT excluded - needed for operation):"
-        if [[ ${#system_files[@]} -gt 0 ]]; then
-            for file in "${!system_files[@]}"; do
+        if [[ $system_files_count -gt 0 ]]; then
+            for file in $(ba_keys system_files); do
                 echo "  ✅ $file"
             done | sort
         fi
-        if [[ ${#system_dirs[@]} -gt 0 ]]; then
-            for dir in "${!system_dirs[@]}"; do
+        if [[ $system_dirs_count -gt 0 ]]; then
+            for dir in $(ba_keys system_dirs); do
                 echo "  ✅ $dir/"
             done | sort
         fi
     fi
     
-    # Summary
-    local total_excluded=$((${#excluded_files[@]} + ${#excluded_dirs[@]}))
-    local total_system=$((${#system_files[@]} + ${#system_dirs[@]}))
+    # Summary (bash 3.2 compatible)
+    local total_excluded=$((excluded_files_count + excluded_dirs_count))
+    local total_system=$((system_files_count + system_dirs_count))
     echo ""
     if [[ $total_excluded -eq 0 && $total_system -eq 0 ]]; then
         print_info "No sensitive files/directories found in this project"
     else
-        print_info "Excluded: ${#excluded_files[@]} files, ${#excluded_dirs[@]} directories"
+        print_info "Excluded: $excluded_files_count files, $excluded_dirs_count directories"
         if [[ $total_system -gt 0 ]]; then
-            print_info "Protected NyarlathotIA system: ${#system_files[@]} files, ${#system_dirs[@]} directories"
+            print_info "Protected NyarlathotIA system: $system_files_count files, $system_dirs_count directories"
         fi
     fi
 }
@@ -256,10 +289,10 @@ exclusions_test() {
                 else
                     echo "  -v $mount_arg"
                 fi
-                ((i+=2))
+                i=$((i + 2))
             else
                 echo "  ${VOLUME_ARGS[$i]}"
-                ((i++))
+                i=$((i + 1))
             fi
         done
     else

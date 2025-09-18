@@ -7,6 +7,9 @@
 
 set -e
 
+# Source bash 3.2 compatibility layer for macOS
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/bash32-compat.sh" 2>/dev/null || true
+
 # === MOUNT EXCLUSIONS INTEGRATION ===
 # Load mount exclusions library if available
 script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
@@ -832,7 +835,7 @@ get_prompt_filename() {
         gemini) echo "GEMINI.md" ;;
         codex) echo "AGENTS.md" ;;
         opencode) echo "OPENCODE.md" ;;
-        *) echo "${assistant_cli^^}.md" ;;
+        *) echo "$(to_upper "$assistant_cli" 2>/dev/null || echo "$assistant_cli" | tr '[:lower:]' '[:upper:]').md" ;;
     esac
 }
 
