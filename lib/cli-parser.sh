@@ -7,8 +7,7 @@
 
 set -e
 
-# Source bash 3.2 compatibility layer for macOS
-source "$(dirname "${BASH_SOURCE[0]}")/bash32-compat.sh" 2>/dev/null || true
+# Standard bash 4.0+ features used throughout
 
 # Load input validation functions for security
 cli_parser_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"

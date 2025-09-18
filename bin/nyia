@@ -286,14 +286,29 @@ case "${1:-help}" in
     exclusions)
         # Handle exclusions command
         shift
-        exclusions_lib="$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"
+        script_dir_real="$(dirname "$(realpath "$0")")"
+        exclusions_lib="$script_dir_real/../lib/exclusions-commands.sh"
+        mount_exclusions_lib="$script_dir_real/../lib/mount-exclusions.sh"
+        
+        # Source the exclusions commands library
         if [[ -f "$exclusions_lib" ]]; then
             source "$exclusions_lib"
-            handle_exclusions_command "$@"
         else
-            echo "Error: Exclusions system not installed properly"
+            echo "Error: Exclusions commands library not found"
+            echo "Missing: $exclusions_lib"
             exit 1
         fi
+        
+        # Source the mount exclusions library
+        if [[ -f "$mount_exclusions_lib" ]]; then
+            source "$mount_exclusions_lib"
+        else
+            echo "Error: Mount exclusions library not found"
+            echo "Missing: $mount_exclusions_lib"
+            exit 1
+        fi
+        
+        handle_exclusions_command "$@"
         ;;
     help|--help|-h)
         echo "NyarlathotIA Multi-Assistant Infrastructure"

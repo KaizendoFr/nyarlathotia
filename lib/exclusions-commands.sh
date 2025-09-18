@@ -9,8 +9,7 @@ if ! declare -f is_exclusions_cache_valid >/dev/null 2>&1; then
     source "$(dirname "${BASH_SOURCE[0]}")/exclusions-cache-utils.sh" 2>/dev/null || true
 fi
 
-# Source bash 3.2 compatibility layer for macOS
-source "$(dirname "${BASH_SOURCE[0]}")/bash32-compat.sh"
+# Standard bash 4.0+ associative arrays (no compatibility layer needed)
 
 # Ensure mount-exclusions library is loaded
 if ! declare -f get_exclusion_patterns >/dev/null 2>&1; then
@@ -97,13 +96,13 @@ exclusions_list() {
         return 0
     fi
     
-    # Use associative arrays to track unique matches (bash 3.2 compatible)
-    ba_init excluded_files
-    ba_init excluded_dirs
-    ba_init system_files
-    ba_init system_dirs
+    # Use associative arrays to track unique matches
+    declare -A excluded_files
+    declare -A excluded_dirs
+    declare -A system_files
+    declare -A system_dirs
     
-    # Track counts separately for bash 3.2 compatibility
+    # Track counts
     local excluded_files_count=0
     local excluded_dirs_count=0
     local system_files_count=0
@@ -113,28 +112,28 @@ exclusions_list() {
     if is_exclusions_cache_valid "$project_path"; then
         # Read from cache
         if read_cached_exclusions "$project_path"; then
-            # Populate associative arrays from cache (bash 3.2 compatible)
+            # Populate associative arrays from cache
             for file in "${CACHED_EXCLUDED_FILES[@]}"; do
                 if [[ -n "$file" ]]; then
-                    ba_set excluded_files "$file" "1"
+                    excluded_files["$file"]=1
                     excluded_files_count=$((excluded_files_count + 1))
                 fi
             done
             for dir in "${CACHED_EXCLUDED_DIRS[@]}"; do
                 if [[ -n "$dir" ]]; then
-                    ba_set excluded_dirs "$dir" "1"
+                    excluded_dirs["$dir"]=1
                     excluded_dirs_count=$((excluded_dirs_count + 1))
                 fi
             done
             for file in "${CACHED_SYSTEM_FILES[@]}"; do
                 if [[ -n "$file" ]]; then
-                    ba_set system_files "$file" "1"
+                    system_files["$file"]=1
                     system_files_count=$((system_files_count + 1))
                 fi
             done
             for dir in "${CACHED_SYSTEM_DIRS[@]}"; do
                 if [[ -n "$dir" ]]; then
-                    ba_set system_dirs "$dir" "1"
+                    system_dirs["$dir"]=1
                     system_dirs_count=$((system_dirs_count + 1))
                 fi
             done
@@ -165,14 +164,14 @@ exclusions_list() {
                 
                 # Check if this is a NyarlathotIA system file
                 if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    if ! ba_exists system_files "$rel_path"; then
-                        ba_set system_files "$rel_path" "1"
+                    if [[ -z "${system_files[$rel_path]:-}" ]]; then
+                        system_files["$rel_path"]=1
                         system_files_count=$((system_files_count + 1))
                         SCAN_SYSTEM_FILES+=("$rel_path")
                     fi
                 else
-                    if ! ba_exists excluded_files "$rel_path"; then
-                        ba_set excluded_files "$rel_path" "1"
+                    if [[ -z "${excluded_files[$rel_path]:-}" ]]; then
+                        excluded_files["$rel_path"]=1
                         excluded_files_count=$((excluded_files_count + 1))
                         SCAN_EXCLUDED_FILES+=("$rel_path")
                     fi
@@ -187,14 +186,14 @@ exclusions_list() {
                 
                 # Check if this is a NyarlathotIA system directory
                 if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    if ! ba_exists system_dirs "$rel_path"; then
-                        ba_set system_dirs "$rel_path" "1"
+                    if [[ -z "${system_dirs[$rel_path]:-}" ]]; then
+                        system_dirs["$rel_path"]=1
                         system_dirs_count=$((system_dirs_count + 1))
                         SCAN_SYSTEM_DIRS+=("$rel_path")
                     fi
                 else
-                    if ! ba_exists excluded_dirs "$rel_path"; then
-                        ba_set excluded_dirs "$rel_path" "1"
+                    if [[ -z "${excluded_dirs[$rel_path]:-}" ]]; then
+                        excluded_dirs["$rel_path"]=1
                         excluded_dirs_count=$((excluded_dirs_count + 1))
                         SCAN_EXCLUDED_DIRS+=("$rel_path")
                     fi
@@ -206,12 +205,12 @@ exclusions_list() {
         write_exclusions_cache "$project_path"
     fi
     
-    # Display results (bash 3.2 compatible)
+    # Display results
     echo "Files that will be excluded:"
     if [[ $excluded_files_count -eq 0 ]]; then
         echo "  (none found)"
     else
-        for file in $(ba_keys excluded_files); do
+        for file in "${!excluded_files[@]}"; do
             echo "  🔒 $file"
         done | sort
     fi
@@ -221,7 +220,7 @@ exclusions_list() {
     if [[ $excluded_dirs_count -eq 0 ]]; then
         echo "  (none found)"
     else
-        for dir in $(ba_keys excluded_dirs); do
+        for dir in "${!excluded_dirs[@]}"; do
             echo "  📁 $dir/"
         done | sort
     fi
@@ -231,18 +230,18 @@ exclusions_list() {
         echo ""
         echo "NyarlathotIA system files (NOT excluded - needed for operation):"
         if [[ $system_files_count -gt 0 ]]; then
-            for file in $(ba_keys system_files); do
+            for file in "${!system_files[@]}"; do
                 echo "  ✅ $file"
             done | sort
         fi
         if [[ $system_dirs_count -gt 0 ]]; then
-            for dir in $(ba_keys system_dirs); do
+            for dir in "${!system_dirs[@]}"; do
                 echo "  ✅ $dir/"
             done | sort
         fi
     fi
     
-    # Summary (bash 3.2 compatible)
+    # Summary
     local total_excluded=$((excluded_files_count + excluded_dirs_count))
     local total_system=$((system_files_count + system_dirs_count))
     echo ""
@@ -722,4 +721,37 @@ To disable globally:
   Set: ENABLE_MOUNT_EXCLUSIONS=false
 
 EOF
+}
+
+# === DISPATCHER FUNCTION FOR RUNTIME ===
+# This function is expected by the runtime dispatcher
+handle_exclusions_command() {
+    local subcommand="${1:-help}"
+    shift || true
+    
+    case "$subcommand" in
+        list)
+            exclusions_list "$@"
+            ;;
+        test)
+            exclusions_test "$@"
+            ;;
+        status)
+            exclusions_status "$@"
+            ;;
+        patterns)
+            exclusions_patterns "$@"
+            ;;
+        init)
+            exclusions_init "$@"
+            ;;
+        help|--help|-h)
+            exclusions_help
+            ;;
+        *)
+            print_error "Unknown exclusions command: $subcommand"
+            exclusions_help
+            exit 1
+            ;;
+    esac
 }
