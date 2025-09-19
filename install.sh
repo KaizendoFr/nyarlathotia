@@ -74,8 +74,8 @@ if [[ -f "$BIN_DIR/assistant-template.sh" ]]; then
     sed -i 's|local mount_exclusions_lib="\$script_dir/\.\./lib/mount-exclusions\.sh"|local mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/assistant-template.sh"
     
     # Also fix paths in main nyia script
-    sed -i 's|local exclusions_lib="\$script_dir/\.\./lib/exclusions-commands\.sh"|local exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/nyia"
-    sed -i 's|local mount_exclusions_lib="\$script_dir/\.\./lib/mount-exclusions\.sh"|local mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/nyia"
+    sed -i 's|exclusions_lib="\$script_dir_real/\.\./lib/exclusions-commands\.sh"|exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/nyia"
+    sed -i 's|mount_exclusions_lib="\$script_dir_real/\.\./lib/mount-exclusions\.sh"|mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/nyia"
     echo "✅ Updated paths for installed layout"
 fi
 
