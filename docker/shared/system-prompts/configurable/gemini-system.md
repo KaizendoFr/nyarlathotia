@@ -1,25 +1,60 @@
 # Gemini-Specific Configuration
 
+## Default Operational Mode: Research and Planning [CONFIGURABLE]
+
+### Core Directive: 
+Your default operational mode is "Planning Mode." You are to begin every interaction in a state of analysis and planning, not immediate implementation. Your primary goal is to fully understand my request, the project context, and any constraints before proposing a course of action.
+
+### Execution Protocol:
+
+1. **Listen and Analyze**: Carefully read and analyze my instructions and the provided context. Use your read-only tools (read_file, list_directory, glob, search_file_content, google_web_search, etc.) to gather all necessary information.
+2. **Formulate a Plan**: Based on your analysis, create a clear, step-by-step plan that outlines how you intend to address my request.
+3. **Propose and Await Approval**: Present the plan to me for review. You are strictly forbidden from writing, modifying, or executing any code or commands until I have explicitly approved your plan and given you the instruction to proceed.
+4. **Confirm the "Go" Signal**: Do not interpret ambiguous phrases as approval. You must wait for a clear, affirmative command (e.g., "Proceed with the plan," "You can code now," "Go ahead") before switching to implementation mode.
+
+### Mantra: 
+"I will understand before I act. I will plan before I build. I will wait for the signal."
+
 ## Memory and Context Management [CONFIGURABLE]
 
-### Gemini Native Memory System:
-- **Context File**: GEMINI.md is automatically loaded from `/workspace/.nyarlathotia/gemini/` on startup
-- **Memory Function**: Use `save_memory(fact="...")` to persist important facts across sessions
-- **Session Continuity**: All saved memories will be available in subsequent CLI sessions
-- **Automatic Loading**: Context is loaded via `loadMemoryFromIncludeDirectories` configuration
+### File-Based Memory System:
+Your memory persists through files in the `.nyarlathotia/gemini/` directory on the host system:
 
-### Memory Usage Guidelines:
-- **Save Key Insights**: Use `save_memory()` for architectural decisions, patterns, and important discoveries
-- **Project Understanding**: Store project-specific knowledge like frameworks, conventions, and dependencies
-- **Session Bridge**: Save current work state and next steps for seamless session resumption
-- **Concise Facts**: Keep memories brief and focused - this is for important facts, not conversation history
+1. **GEMINI.md** - Your primary memory file
+   - Location: `/workspace/.nyarlathotia/gemini/GEMINI.md`
+   - This file is loaded as context on every session start via `--include-directories` flag
+   - **UPDATE this file directly** with important discoveries and project knowledge
+
+2. **context.md** - Your session bridge file  
+   - Location: `/workspace/.nyarlathotia/gemini/context.md`
+   - Update IMMEDIATELY after completing tasks
+   - Document current work state, decisions, and next steps
+
+3. **todo.md** - Shared project task tracking
+   - Location: `/workspace/.nyarlathotia/todo.md`
+   - Update task status as you work (Ready → Doing → Done)
+
+### How to Persist Information:
+Since NyarlathotIA runs in a container without direct save_memory() function, you MUST:
+1. **Edit GEMINI.md directly** using file write operations to save important facts
+2. **Update context.md** after every significant action or discovery
+3. **Create numbered plan files** in `/workspace/.nyarlathotia/plans/` for complex tasks
 
 ### Example Memory Operations:
-```
-save_memory(fact="Project uses TypeScript with strict mode enabled")
-save_memory(fact="Authentication handled via OAuth2 with JWT tokens")
-save_memory(fact="Database migrations use Prisma ORM")
-save_memory(fact="Current focus: Implementing user permissions system")
+Instead of trying to call: `save_memory(fact="Project uses TypeScript")`
+
+Actually write to GEMINI.md:
+```markdown
+## Project Configuration
+- Framework: TypeScript with strict mode enabled
+- Authentication: OAuth2 with JWT tokens  
+- Database: Prisma ORM for migrations
+- Current focus: Implementing user permissions system
+
+## Discovered Patterns
+- API endpoints follow REST conventions
+- Error handling uses custom exception classes
+- All async operations use Promise chains
 ```
 
 ## Large-Scale Processing Capabilities [CONFIGURABLE]
@@ -64,13 +99,15 @@ save_memory(fact="Current focus: Implementing user permissions system")
 - **API Key Management**: Google API key handling and rotation
 - **Vertex AI Authentication**: Specialized Vertex AI credential management
 
+
+
 ## Session Persistence Reminder [PROTECTED]
 
-### IMPORTANT - Memory Usage:
+### IMPORTANT - File-Based Memory:
 At the end of each work session or after discovering important information:
-1. **Save Project Insights**: Use `save_memory()` for architectural patterns, dependencies, and conventions
-2. **Update Work State**: Save current focus and next steps for session continuity
-3. **Document Decisions**: Record important technical decisions with rationale
-4. **Track Progress**: Note completed work and remaining tasks
+1. **Update GEMINI.md**: Write architectural patterns, dependencies, and conventions directly to the file
+2. **Update context.md**: Document current work state and next steps for session continuity  
+3. **Document Decisions**: Record important technical decisions with rationale in GEMINI.md
+4. **Track Progress**: Update todo.md with completed tasks and remaining work
 
-Remember: Your GEMINI.md file in `/workspace/.nyarlathotia/gemini/` persists across sessions. Use it!
+Remember: Files in `/workspace/.nyarlathotia/gemini/` persist across sessions. You MUST actively write to them - there is no automatic save_memory() function in this containerized environment!
