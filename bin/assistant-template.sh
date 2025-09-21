@@ -180,6 +180,12 @@ main() {
         list_assistant_images "$BASE_IMAGE_NAME"
         exit 0
     fi
+    
+    # Handle list flavors mode
+    if [[ "$LIST_FLAVORS" == "true" ]]; then
+        list_assistant_flavors "$config_assistant_name"
+        exit 0
+    fi
 
     # Handle API key setup mode
     if [[ "$SET_API_KEY" == "true" ]]; then
@@ -234,6 +240,7 @@ main() {
             exit 1
         fi
     fi
+    
     
     # Execute assistant using abstracted functions  
     run_assistant "$config_assistant_name" "$ASSISTANT_CLI" "$BASE_IMAGE_NAME" "$DOCKERFILE_PATH" "$CONTEXT_DIR_NAME" "$PROJECT_PATH" "$prompt" "$BASE_BRANCH" "$DEV_MODE" "$SHELL_MODE" "$DOCKER_IMAGE" "$WORK_BRANCH"

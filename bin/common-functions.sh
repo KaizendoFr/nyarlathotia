@@ -1350,10 +1350,6 @@ run_debug_shell() {
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
     docker_env_args+=(-e NYIA_PROJECT_PATH="/workspace")
     
-    # Pass system prompt override if specified
-    if [[ -n "${SYSTEM_PROMPT:-}" ]]; then
-        docker_env_args+=(-e NYIA_SYSTEM_PROMPT="${SYSTEM_PROMPT}")
-    fi
     
     # Create environment file for Docker
     local env_file=$(create_docker_env_file "$project_path" "$assistant_cli")
@@ -1449,10 +1445,6 @@ run_docker_container() {
     docker_env_args+=(-e NYIA_PROJECT_PATH="/workspace")
     docker_env_args+=(-e NYIA_BUILD_TIMESTAMP="$(date -Iseconds)")
     
-    # Pass system prompt override if specified
-    if [[ -n "${SYSTEM_PROMPT:-}" ]]; then
-        docker_env_args+=(-e NYIA_SYSTEM_PROMPT="${SYSTEM_PROMPT}")
-    fi
     
     # Create environment file for Docker
     local env_file=$(create_docker_env_file "$project_path" "$assistant_cli")
@@ -1882,38 +1874,77 @@ select_docker_image() {
     local dev_mode="$2"
     local docker_image="$3"
     
-    # If specific image provided, validate and use it
-    if [[ -n "$docker_image" ]]; then
-        # Validate image name for security
-        if ! validate_image_name "$docker_image"; then
-            print_error "Invalid Docker image specification"
-            return 1
-        fi
-        
-        local selected_image
-        # Parse image specification
-        if [[ "$docker_image" == *:* ]]; then
-            # Full repo:tag format
-            selected_image="$docker_image"
+    # Use flavor-aware image resolution
+    # Precedence: --image > --flavor > default
+    local selected_image
+    if selected_image=$(resolve_flavor_image "$base_image_name" "$FLAVOR" "$docker_image"); then
+        # Check if it's a custom image (--image flag) vs flavor/default
+        if [[ -n "$docker_image" ]]; then
+            # Validate custom image name for security
+            if ! validate_image_name "$docker_image"; then
+                print_error "Invalid Docker image specification"
+                return 1
+            fi
+            print_status "Image selection: Using specified image: $selected_image" >&2
+        elif [[ -n "$FLAVOR" ]]; then
+            print_status "Image selection: Using flavor '$FLAVOR': $selected_image" >&2
         else
-            # Just tag - assume current base
-            selected_image="${base_image_name}:${docker_image}"
+            print_status "Image selection: Using default image: $selected_image" >&2
         fi
-        print_status "Image selection: Using specified image: $selected_image" >&2
         echo "$selected_image"
         return 0
+    else
+        print_error "Failed to resolve image with flavor support"
+        return 1
     fi
-    
-    # Default image selection with registry support
+}
 
-    # Runtime mode: always use registry
-    # Extract assistant name from base_image_name
-    local assistant_name=$(basename "$base_image_name" | sed 's/^nyarlathotia-//')
+# List available flavors for an assistant
+list_assistant_flavors() {
+    local assistant_name="$1"
     
-    # Use registry-aware image selection
-    local selected_image=$(get_image_name "$assistant_name")
-    print_status "Image selection: Using registry-aware image: $selected_image" >&2
-    echo "$selected_image"
+    echo "NyarlathotIA ${assistant_name} - Available Flavors:"
+    echo ""
+    
+    # For now, show hardcoded common flavors since Phase 3 will implement registry discovery
+    echo "Language Runtimes:"
+    echo "  node        - Node.js latest"
+    echo "  node18      - Node.js 18.x"
+    echo "  node20      - Node.js 20.x"
+    echo "  python      - Python latest"
+    echo "  python311   - Python 3.11"
+    echo "  python312   - Python 3.12"
+    echo "  rust        - Rust latest"
+    echo "  go          - Go latest"
+    echo "  php         - PHP latest"
+    echo "  php81       - PHP 8.1"
+    echo "  php82       - PHP 8.2"
+    echo ""
+    
+    echo "Frameworks:"
+    echo "  nextjs      - Next.js optimized"
+    echo "  react       - React optimized"
+    echo "  laravel     - Laravel optimized"
+    echo "  django      - Django optimized"
+    echo "  fastapi     - FastAPI optimized"
+    echo "  express     - Express.js optimized"
+    echo ""
+    
+    echo "Specialized Tools:"
+    echo "  docker      - Docker tooling included"
+    echo "  k8s         - Kubernetes tools"
+    echo "  terraform   - Terraform included"
+    echo "  aws         - AWS CLI and tools"
+    echo "  gcp         - Google Cloud tools"
+    echo ""
+    
+    echo "Usage:"
+    echo "  nyia-${assistant_name} --flavor=node18 -p \"Review TypeScript code\""
+    echo "  nyia-${assistant_name} --flavor=python -p \"Debug this script\""
+    echo ""
+    
+    echo "Note: Actual availability depends on what images are built/available in registry."
+    echo "Use --image flag if you need a specific custom image."
 }
 
 # === ASSISTANT EXECUTION ===
@@ -2014,7 +2045,7 @@ run_assistant() {
             print_info "  No images found for $base_image_name"
         fi
         
-        # Different behavior based on whether image was explicitly specified
+        # Different behavior based on what caused the failure
         if [[ -n "$docker_image" ]]; then
             # User explicitly specified --image: fail with helpful message, no building
             echo ""
@@ -2024,6 +2055,10 @@ run_assistant() {
             print_info "  nyia-${assistant_cli} --image latest              # Use latest"
             print_info "  nyia-${assistant_cli} --list-images               # List available"
             print_info "  nyia-${assistant_cli}                             # Use default"
+            exit 1
+        elif [[ -n "$FLAVOR" ]]; then
+            # User specified --flavor but image doesn't exist
+            show_flavor_error "$assistant_cli" "$FLAVOR"
             exit 1
         else
             # No explicit image specified: normal user without image

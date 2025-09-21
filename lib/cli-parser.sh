@@ -30,6 +30,8 @@ export SET_API_KEY="false"
 export SETUP_MODE="false"
 export LIST_IMAGES="false"
 export DOCKER_IMAGE=""
+export FLAVOR=""
+export LIST_FLAVORS="false"
 
 # Mount exclusions flags (simplified)
 export DISABLE_EXCLUSIONS="false"
@@ -44,7 +46,6 @@ export BUILD_CUSTOM_IMAGE=""
 export COMMAND=""
 export ASSISTANT_NAME=""
 export USER_PROMPT=""
-export SYSTEM_PROMPT=""
 export REMAINING_ARGS=()
 
 # Context
@@ -71,8 +72,9 @@ get_global_args() {
 # Get description for assistant arguments
 get_assistant_arg_desc() {
     case "$1" in
-        "--prompt-system") echo "Override system prompt (use ++ prefix to append)" ;;
         "--image") echo "Select specific Docker image (tag or repo:tag)" ;;
+        "--flavor") echo "Select assistant flavor/variant (e.g., node, python, rust)" ;;
+        "--flavors-list") echo "List available flavors for this assistant" ;;
         "--status") echo "Show assistant status, configs, and available overlays" ;;
         "--list-images") echo "List all available Docker images for this assistant" ;;
         "--base-branch") echo "Specify Git base branch to work from" ;;
@@ -92,7 +94,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--prompt-system --image --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p"
+    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p"
 }
 
 # Get description for dispatcher arguments
@@ -234,7 +236,6 @@ Power User:
   --build-custom-image     # Build custom image with overlays
 
 Configuration:
-  --prompt-system          # Override system prompt
   --disable-exclusions     # Disable mount exclusions
   --image <tag>           # Use specific image
   --check-requirements    # Check system requirements
@@ -345,13 +346,30 @@ parse_assistant_args() {
                     exit 1
                 fi
                 ;;
-            --prompt-system)
-                SYSTEM_PROMPT="$2"
-                shift 2
-                ;;
             --image)
-                export DOCKER_IMAGE="$2"
-                shift 2
+                if [[ -n "$2" ]]; then
+                    export DOCKER_IMAGE="$2"
+                    shift 2
+                else
+                    echo "Error: --image requires an argument" >&2
+                    echo "Usage: --image <tag|repo:tag>" >&2
+                    exit 1
+                fi
+                ;;
+            --flavor)
+                if [[ -n "$2" ]]; then
+                    export FLAVOR="$2"
+                    shift 2
+                else
+                    echo "Error: --flavor requires an argument" >&2
+                    echo "Usage: --flavor <flavor-name>" >&2
+                    echo "Example: --flavor node18" >&2
+                    exit 1
+                fi
+                ;;
+            --flavors-list)
+                export LIST_FLAVORS="true"
+                shift
                 ;;
             --status)
                 SHOW_STATUS="true"
@@ -391,20 +409,39 @@ parse_assistant_args() {
                 shift
                 ;;
             --base-branch)
-                BASE_BRANCH="$2"
-                shift 2
+                if [[ -n "$2" ]]; then
+                    BASE_BRANCH="$2"
+                    shift 2
+                else
+                    echo "Error: --base-branch requires an argument" >&2
+                    echo "Usage: --base-branch <branch-name>" >&2
+                    exit 1
+                fi
                 ;;
             --work-branch)
-                WORK_BRANCH="$2"
-                shift 2
+                if [[ -n "$2" ]]; then
+                    WORK_BRANCH="$2"
+                    shift 2
+                else
+                    echo "Error: --work-branch requires an argument" >&2
+                    echo "Usage: --work-branch <branch-name>" >&2
+                    exit 1
+                fi
                 ;;
             --build-custom-image)
                 BUILD_CUSTOM_IMAGE="true"
                 shift
                 ;;
             --prompt|-p)
-                USER_PROMPT="$2"
-                shift 2
+                if [[ -n "$2" ]]; then
+                    USER_PROMPT="$2"
+                    shift 2
+                else
+                    echo "Error: --prompt requires an argument" >&2
+                    echo "Usage: --prompt \"Your prompt text\"" >&2
+                    echo "   or: -p \"Your prompt text\"" >&2
+                    exit 1
+                fi
                 ;;
             *)
                 # Strict validation: reject unknown options
@@ -424,7 +461,6 @@ parse_assistant_args() {
                     echo "  --check-requirements Check system requirements" >&2
                     echo "  --path <dir>         Work on different project directory" >&2
                     echo "  --prompt, -p <text>  Explicit user prompt" >&2
-                    echo "  --prompt-system <text> Override system prompt with custom text" >&2
                     echo "  --verbose, -v        Enable verbose output" >&2
                     echo "  --help, -h           Show help" >&2
                     
@@ -493,8 +529,10 @@ parse_args() {
     export SHELL_MODE="false"
     export SET_API_KEY="false"
     export SETUP_MODE="false"
+    export LIST_FLAVORS="false"
     export DISABLE_EXCLUSIONS="false"
     export PROJECT_PATH=""
+    export FLAVOR=""
     export BASE_BRANCH=""
         export COMMAND=""
     export ASSISTANT_NAME=""
@@ -585,6 +623,39 @@ validate_args() {
             echo "" >&2
             exit 1
         fi
+    fi
+    
+    # Validate flavor parameter
+    if [[ -n "$FLAVOR" ]]; then
+        # Source the validation function if not already available
+        local script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+        if [[ -f "$script_dir/../bin/common/shared.sh" ]] && ! declare -f validate_flavor_name >/dev/null; then
+            source "$script_dir/../bin/common/shared.sh"
+        fi
+        
+        # Validate flavor name format
+        if declare -f validate_flavor_name >/dev/null && ! validate_flavor_name "$FLAVOR"; then
+            echo "Error: Invalid flavor name '$FLAVOR'" >&2
+            echo "" >&2
+            echo "Flavor names must:" >&2
+            echo "  - Start and end with alphanumeric characters" >&2
+            echo "  - Contain only lowercase letters, numbers, and hyphens" >&2
+            echo "  - Not have consecutive hyphens" >&2
+            echo "" >&2
+            echo "Valid examples: node, python, node18, php81, nextjs" >&2
+            echo "Invalid examples: Node, python_3, -node, php-, node--js" >&2
+            exit 1
+        fi
+    fi
+    
+    # Validate conflicting image selection flags
+    if [[ -n "$FLAVOR" && -n "$DOCKER_IMAGE" ]]; then
+        echo "Error: Cannot use both --flavor and --image flags together" >&2
+        echo "" >&2
+        echo "Choose one approach:" >&2
+        echo "  --flavor=node           # Use flavor system" >&2
+        echo "  --image=custom:tag      # Use specific image" >&2
+        exit 1
     fi
 }
 

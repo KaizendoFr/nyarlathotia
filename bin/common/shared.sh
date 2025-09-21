@@ -644,6 +644,164 @@ get_image_name() {
 # Runtime distributions don't need this since features are preprocessed out
 
 
+# === FLAVOR SYSTEM ===
+# Validate flavor name format
+validate_flavor_name() {
+    local flavor="$1"
+    
+    # Check if flavor is empty
+    if [[ -z "$flavor" ]]; then
+        return 1
+    fi
+    
+    # Validate flavor name against pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+    # - Must start with alphanumeric
+    # - Can contain alphanumeric and hyphens
+    # - Must end with alphanumeric (if more than one character)
+    # - No consecutive hyphens, no leading/trailing hyphens
+    if [[ "$flavor" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] && [[ "$flavor" != *"--"* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Build flavor image name from assistant and flavor
+build_flavor_image_name() {
+    local assistant="$1"
+    local flavor="$2"
+    
+    # Validate inputs
+    if [[ -z "$assistant" ]] || [[ -z "$flavor" ]]; then
+        return 1
+    fi
+    
+    # Validate flavor name
+    if ! validate_flavor_name "$flavor"; then
+        return 1
+    fi
+    
+    # Build and return image name
+    echo "nyarlathotia-${assistant}-${flavor}:latest"
+}
+
+# Check if a flavor image exists locally or in registry
+validate_flavor_exists() {
+    local assistant="$1"
+    local flavor="$2"
+    
+    # Build the full image name
+    local registry=$(get_docker_registry)
+    local image_name
+    
+    if [[ -n "$registry" ]]; then
+        image_name="${registry}/nyarlathotia-${assistant}-${flavor}:latest"
+    else
+        image_name="nyarlathotia-${assistant}-${flavor}:latest"
+    fi
+    
+    # Check if image exists locally
+    if /usr/bin/docker image inspect "$image_name" >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # If using registry, try to check if it exists remotely
+    if [[ -n "$registry" ]]; then
+        # Try a quick manifest check (this will be enhanced in Phase 3)
+        if /usr/bin/docker manifest inspect "$image_name" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Show helpful error message for missing flavors
+show_flavor_error() {
+    local assistant="$1"
+    local flavor="$2"
+    
+    echo "" >&2
+    echo "❌ Error: Flavor '$flavor' not found for assistant '$assistant'" >&2
+    echo "" >&2
+    echo "This could mean:" >&2
+    echo "  • The flavor image hasn't been built yet" >&2
+    echo "  • The flavor is not available in the registry" >&2
+    echo "  • There was a network issue checking the registry" >&2
+    echo "" >&2
+    echo "Available options:" >&2
+    echo "  1. Use a different flavor: nyia-$assistant --flavors-list" >&2
+    echo "  2. Use default image: nyia-$assistant (without --flavor)" >&2
+    echo "  3. Use custom image: nyia-$assistant --image=your-image:tag" >&2
+    echo "" >&2
+    
+    # Suggest similar flavors based on common typos
+    case "$flavor" in
+        nodejs|"node.js") 
+            echo "💡 Did you mean: --flavor=node" >&2
+            ;;
+        python3)
+            echo "💡 Did you mean: --flavor=python or --flavor=python311" >&2
+            ;;
+        nextjs*|next.js)
+            echo "💡 Did you mean: --flavor=nextjs" >&2
+            ;;
+        typescript|ts)
+            echo "💡 Try: --flavor=node (includes TypeScript support)" >&2
+            ;;
+        golang)
+            echo "💡 Did you mean: --flavor=go" >&2
+            ;;
+    esac
+    echo "" >&2
+}
+
+# Resolve image name with flavor support
+# Precedence: --image > --flavor > default
+resolve_flavor_image() {
+    local base_image_name="$1"
+    local flavor="${2:-${FLAVOR:-}}"
+    local docker_image="${3:-${DOCKER_IMAGE:-}}"
+    
+    # Extract assistant name from base image name
+    local assistant_name=$(basename "$base_image_name" | sed 's/^nyarlathotia-//')
+    
+    # Precedence 1: Explicit --image flag (highest priority)
+    if [[ -n "$docker_image" ]]; then
+        echo "$docker_image"
+        return 0
+    fi
+    
+    # Precedence 2: --flavor flag
+    if [[ -n "$flavor" ]]; then
+        # Validate flavor name
+        if ! validate_flavor_name "$flavor"; then
+            print_error "Invalid flavor name: $flavor"
+            return 1
+        fi
+        
+        # Build flavor image name with registry support
+        local registry=$(get_docker_registry)
+        local flavor_image
+        
+        if [[ -n "$registry" ]]; then
+            # Use registry with flavor
+            flavor_image="${registry}/nyarlathotia-${assistant_name}-${flavor}:latest"
+        else
+            # Local image with flavor
+            flavor_image="nyarlathotia-${assistant_name}-${flavor}:latest"
+        fi
+        
+        echo "$flavor_image"
+        return 0
+    fi
+    
+    # Precedence 3: Default image (lowest priority)
+    # Use existing get_image_name function for consistency
+    get_image_name "$assistant_name"
+    return 0
+}
+
 # NOTE: Runtime builds get no is_development_mode function at all
 
 # Initialize shared environment when sourced
