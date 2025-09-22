@@ -1072,14 +1072,20 @@ get_creds_env_args() {
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
             [[ -z "${line// }" ]] && continue
             
-            # Extract export statements
-            if [[ "$line" =~ ^[[:space:]]*export[[:space:]]+([A-Z_][A-Z0-9_]*)= ]]; then
+            # Extract export statements with their values
+            if [[ "$line" =~ ^[[:space:]]*export[[:space:]]+([A-Z_][A-Z0-9_]*)=(.*)$ ]]; then
                 local var_name="${BASH_REMATCH[1]}"
-                # Check if variable exists in current environment
-                if [[ -n "${!var_name:-}" ]]; then
-                    env_args+=(-e "${var_name}=${!var_name}")
-                    print_verbose "Adding ${var_name} to container environment"
-                fi
+                local var_value="${BASH_REMATCH[2]}"
+
+                # Remove surrounding quotes if present
+                var_value="${var_value#\"}"
+                var_value="${var_value%\"}"
+                var_value="${var_value#\'}"
+                var_value="${var_value%\'}"
+
+                # Add to environment arguments
+                env_args+=(-e "${var_name}=${var_value}")
+                print_verbose "Adding ${var_name} to container environment"
             fi
         done < "$creds_file"
     else
