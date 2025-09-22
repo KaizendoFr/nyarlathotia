@@ -636,7 +636,7 @@ get_image_name() {
     if [[ -n "$registry" ]]; then
         echo "${registry}/nyarlathotia-${assistant}:latest"
     else
-        echo "nyarlathotia/${assistant}:latest"
+        echo "nyarlathotia/nyarlathotia-${assistant}:latest"
     fi
 }
 
