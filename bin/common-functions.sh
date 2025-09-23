@@ -1254,6 +1254,15 @@ check_credentials() {
                 print_info "After login, you can use Claude normally."
                 return 1
             fi
+
+            # Also check for config file (settings/preferences)
+            if [[ ! -f "$HOME/.claude/.claude.json" ]]; then
+                print_warning "Claude configuration not found"
+                print_info "Claude will create default settings on first use"
+                print_verbose "Missing config file: $HOME/.claude/.claude.json"
+                # Don't fail, just warn
+            fi
+
             print_verbose "Claude credentials found at $HOME/.claude/.credentials.json"
             return 0
             ;;
@@ -1705,10 +1714,71 @@ login_assistant() {
             "$full_image_name"
     else
         # Normal login mode
-        /usr/bin/docker run -it --rm \
-            "${docker_opts[@]}" \
-            "$full_image_name" "${login_cmd[@]}"
-        
+        if [[ "$assistant_cli" == "claude" ]]; then
+            # For Claude, run with a special script that handles config preservation
+            print_verbose "Starting Claude login with config watcher"
+
+            # Create a wrapper script that will run inside container
+            local wrapper_script=$(mktemp)
+            cat > "$wrapper_script" << 'EOF'
+#!/bin/bash
+# Start config watcher in background
+(
+    timeout=60
+    elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        if [[ -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
+            sleep 0.5
+            cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
+            echo "Config watcher: Initial file captured"
+            break
+        fi
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+    done
+) &
+watcher_pid=$!
+
+# Run the actual login command
+EOF
+            echo "${login_cmd[@]}" >> "$wrapper_script"
+            cat >> "$wrapper_script" << 'EOF'
+login_exit=$?
+
+# Kill watcher
+kill $watcher_pid 2>/dev/null || true
+
+# Final copy to catch all updates
+if [[ $login_exit -eq 0 && -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
+    cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
+    echo "Final config preservation complete"
+fi
+
+exit $login_exit
+EOF
+            chmod +x "$wrapper_script"
+
+            # Run with wrapper script
+            /usr/bin/docker run -it --rm \
+                "${docker_opts[@]}" \
+                -v "$wrapper_script":/tmp/login-wrapper.sh:ro \
+                --entrypoint /tmp/login-wrapper.sh \
+                "$full_image_name"
+            local login_exit=$?
+
+            # Cleanup wrapper script
+            rm -f "$wrapper_script"
+
+            if [[ $login_exit -eq 0 ]]; then
+                print_success "Claude login completed with config preservation"
+            fi
+        else
+            # Normal login for other assistants
+            /usr/bin/docker run -it --rm \
+                "${docker_opts[@]}" \
+                "$full_image_name" "${login_cmd[@]}"
+        fi
+
         # Verify credentials persisted to host after login
         verify_credential_persistence "$assistant_cli" "$global_config_dir"
     fi
@@ -1727,12 +1797,21 @@ verify_credential_persistence() {
             if [[ -f "$global_config_dir/.credentials.json" ]]; then
                 print_success "✅ Claude credentials saved to: $global_config_dir"
                 print_verbose "Credentials file size: $(stat -c%s "$global_config_dir/.credentials.json" 2>/dev/null || echo 'unknown') bytes"
+
+                # Also check for config file
+                if [[ -f "$global_config_dir/.claude.json" ]]; then
+                    print_success "✅ Claude configuration saved to: $global_config_dir/.claude.json"
+                    print_verbose "Config file size: $(stat -c%s "$global_config_dir/.claude.json" 2>/dev/null || echo 'unknown') bytes"
+                else
+                    print_info "ℹ️  Claude configuration will be created on first use"
+                fi
+
                 return 0
             else
                 print_warning "⚠️  Claude credentials not found on host after login"
                 print_info "Expected location: $global_config_dir/.credentials.json"
                 print_info "This may indicate a Docker mount issue"
-                
+
                 # Diagnostic information
                 if [[ -d "$global_config_dir" ]]; then
                     print_verbose "Directory contents:"
