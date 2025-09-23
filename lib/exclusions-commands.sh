@@ -312,7 +312,7 @@ exclusions_status() {
     echo ""
     echo "Global Settings:"
     echo "  Feature enabled: ${ENABLE_MOUNT_EXCLUSIONS:-true}"
-    echo "  Config file: ${NYARLATHOTIA_HOME:-~/.nyarlathotia}/config/mount-exclusions.conf"
+    echo "  Config file: $(get_nyarlathotia_home)/config/mount-exclusions.conf"
     echo ""
     
     echo "Current Status:"
@@ -717,7 +717,7 @@ To disable exclusions temporarily:
   Or use: nyia-claude --disable-exclusions "your prompt"
 
 To disable globally:
-  Edit ~/.nyarlathotia/config/mount-exclusions.conf
+  Edit $(get_nyarlathotia_home)/config/mount-exclusions.conf
   Set: ENABLE_MOUNT_EXCLUSIONS=false
 
 EOF

@@ -338,7 +338,12 @@ is_nyarlathotia_system_path() {
     local project_path="$2"
     
     # Get NyarlathotIA home (could be the project path itself)
-    local nyia_home="${NYARLATHOTIA_HOME:-$HOME/.nyarlathotia}"
+    # Use platform-aware function if available, otherwise fall back to default
+    if declare -f get_nyarlathotia_home >/dev/null 2>&1; then
+        local nyia_home="${NYARLATHOTIA_HOME:-$(get_nyarlathotia_home)}"
+    else
+        local nyia_home="${NYARLATHOTIA_HOME:-$HOME/.config/nyarlathotia}"
+    fi
     
     # If the project IS the NyarlathotIA home, check for system subdirs
     if [[ "$project_path" == "$nyia_home" ]] || [[ "$(realpath "$project_path")" == "$(realpath "$nyia_home")" ]]; then
