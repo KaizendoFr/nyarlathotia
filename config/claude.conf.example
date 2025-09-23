@@ -22,5 +22,5 @@ CONFIG_DIR_NAME=".nyarlathotia/claude"
 
 
 # === AUTHENTICATION ===
-AUTH_METHOD="device_code"  # claude auth login --device-code
+AUTH_METHOD="token_setup"  # claude setup-token (new method)
 API_KEY_ENV=""             # No API key needed for Claude

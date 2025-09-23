@@ -1242,8 +1242,9 @@ check_credentials() {
     # Assistant-specific credential checking
     case "$cli" in
         claude)
-            # Check for Claude credentials file
-            if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
+            # Check for Claude credentials in the location Claude CLI expects
+            # Note: In container, ~/.claude is mounted from host's ~/.config/nyarlathotia/claude/
+            if [[ ! -f "$HOME/.claude/.credentials.json" ]]; then
                 print_error "Claude is not authenticated"
                 print_info ""
                 print_info "To authenticate Claude, run:"
@@ -1253,7 +1254,7 @@ check_credentials() {
                 print_info "After login, you can use Claude normally."
                 return 1
             fi
-            print_verbose "Claude credentials found at $cfg_dir/.credentials.json"
+            print_verbose "Claude credentials found at $HOME/.claude/.credentials.json"
             return 0
             ;;
         opencode)
@@ -1652,6 +1653,9 @@ login_assistant() {
     case "$auth_method" in
         device_code)
             login_cmd+=("--device-code")
+            ;;
+        token_setup)
+            # Claude setup-token doesn't require additional flags
             ;;
         chatgpt_signin)
             # Codex no longer requires an explicit flag for ChatGPT sign-in
