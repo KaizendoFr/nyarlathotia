@@ -1720,41 +1720,64 @@ login_assistant() {
 
             # Create a wrapper script that will run inside container
             local wrapper_script=$(mktemp)
-            cat > "$wrapper_script" << 'EOF'
+
+            # Build the login command string
+            local login_cmd_str="${login_cmd[*]}"
+
+            cat > "$wrapper_script" << EOF
 #!/bin/bash
-# Start config watcher in background
+# Start config watcher in background - continuously monitors for changes
 (
-    timeout=60
+    timeout=300  # 5 minutes max
     elapsed=0
-    while [[ $elapsed -lt $timeout ]]; do
-        if [[ -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
-            sleep 0.5
-            cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
-            echo "Config watcher: Initial file captured"
-            break
+    config_file="/home/node/.claude.json"
+    mount_file="/home/node/.claude/.claude.json"
+    last_checksum=""
+    file_found=false
+
+    echo "Config watcher: Starting continuous monitoring..."
+
+    while [[ \$elapsed -lt \$timeout ]]; do
+        if [[ -f "\$config_file" && ! -L "\$config_file" ]]; then
+            # Calculate file checksum to detect changes
+            current_checksum=\$(md5sum "\$config_file" 2>/dev/null | cut -d' ' -f1)
+
+            if [[ "\$current_checksum" != "\$last_checksum" ]]; then
+                # File created or changed - copy it
+                cp "\$config_file" "\$mount_file"
+                last_checksum="\$current_checksum"
+
+                if [[ "\$file_found" == "false" ]]; then
+                    echo "Config watcher: Initial file captured"
+                    file_found=true
+                else
+                    echo "Config watcher: File updated, copied again"
+                fi
+            fi
         fi
+
         sleep 0.5
-        elapsed=$((elapsed + 1))
+        elapsed=\$((elapsed + 1))
     done
+
+    echo "Config watcher: Timeout after \${timeout}s"
 ) &
-watcher_pid=$!
+watcher_pid=\$!
 
 # Run the actual login command
-EOF
-            echo "${login_cmd[@]}" >> "$wrapper_script"
-            cat >> "$wrapper_script" << 'EOF'
-login_exit=$?
+$login_cmd_str
+login_exit=\$?
 
 # Kill watcher
-kill $watcher_pid 2>/dev/null || true
+kill \$watcher_pid 2>/dev/null || true
 
 # Final copy to catch all updates
-if [[ $login_exit -eq 0 && -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
+if [[ \$login_exit -eq 0 && -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
     cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
     echo "Final config preservation complete"
 fi
 
-exit $login_exit
+exit \$login_exit
 EOF
             chmod +x "$wrapper_script"
 
