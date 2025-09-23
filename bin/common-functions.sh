@@ -1241,8 +1241,23 @@ check_credentials() {
 
     # Assistant-specific credential checking
     case "$cli" in
-        claude|opencode)
-            # No pre-flight credentials needed - these handle auth internally
+        claude)
+            # Check for Claude credentials file
+            if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
+                print_error "Claude is not authenticated"
+                print_info ""
+                print_info "To authenticate Claude, run:"
+                print_info "  nyia-claude --login"
+                print_info ""
+                print_info "This will open a browser for authentication."
+                print_info "After login, you can use Claude normally."
+                return 1
+            fi
+            print_verbose "Claude credentials found at $cfg_dir/.credentials.json"
+            return 0
+            ;;
+        opencode)
+            # No pre-flight credentials needed - handles auth internally
             print_verbose "No pre-flight credential check needed for $cli"
             return 0
             ;;
