@@ -1242,9 +1242,9 @@ check_credentials() {
     # Assistant-specific credential checking
     case "$cli" in
         claude)
-            # Check for Claude credentials in the location Claude CLI expects
-            # Note: In container, ~/.claude is mounted from host's ~/.config/nyarlathotia/claude/
-            if [[ ! -f "$HOME/.claude/.credentials.json" ]]; then
+            # Check for Claude credentials on the host in the config directory
+            # These will be mounted into the container at ~/.claude/
+            if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
                 print_error "Claude is not authenticated"
                 print_info ""
                 print_info "To authenticate Claude, run:"
@@ -1256,14 +1256,14 @@ check_credentials() {
             fi
 
             # Also check for config file (settings/preferences)
-            if [[ ! -f "$HOME/.claude/.claude.json" ]]; then
+            if [[ ! -f "$cfg_dir/.claude.json" ]]; then
                 print_warning "Claude configuration not found"
                 print_info "Claude will create default settings on first use"
-                print_verbose "Missing config file: $HOME/.claude/.claude.json"
+                print_verbose "Missing config file: $cfg_dir/.claude.json"
                 # Don't fail, just warn
             fi
 
-            print_verbose "Claude credentials found at $HOME/.claude/.credentials.json"
+            print_verbose "Claude credentials found at $cfg_dir/.credentials.json"
             return 0
             ;;
         opencode)
@@ -1626,6 +1626,13 @@ login_assistant() {
     local global_config_dir="$nyia_home/$assistant_cli"
     mkdir -p "$global_config_dir"
 
+    # Source provider-specific hooks if they exist (ensure functions are available)
+    local provider_hooks_file="$dockerfile_path/${assistant_cli}-hooks.sh"
+    if [[ -f "$provider_hooks_file" ]]; then
+        print_verbose "Sourcing provider hooks: $provider_hooks_file"
+        source "$provider_hooks_file"
+    fi
+
     # Select Docker image to use
     local full_image_name
     if ! full_image_name=$(select_docker_image "$base_image_name" "$dev_mode" "$docker_image"); then
@@ -1649,8 +1656,11 @@ login_assistant() {
     # Ask provider hook for login command, fallback to default pattern
     local login_cmd
     if declare -f get_login_command > /dev/null; then
+        print_verbose "Using provider-specific login command for $assistant_cli"
         read -a login_cmd <<< "$(get_login_command "$assistant_cli")"
+        print_verbose "Login command: ${login_cmd[*]}"
     else
+        print_verbose "No get_login_command function found, using fallback for $assistant_cli"
         # Fallback: use existing logic for backward compatibility
         login_cmd=("$assistant_cli")
         if [[ "$assistant_cli" == "codex" ]]; then
@@ -1658,6 +1668,7 @@ login_assistant() {
         else
             login_cmd+=("auth" "login")
         fi
+        print_verbose "Fallback login command: ${login_cmd[*]}"
     fi
     case "$auth_method" in
         device_code)
