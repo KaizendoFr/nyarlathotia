@@ -82,6 +82,7 @@ get_assistant_arg_desc() {
         "--build-custom-image") echo "Build custom Docker image with your overlays (power users)" ;;
         "--setup") echo "Interactive model/provider setup (OpenCode)" ;;
         "--login") echo "Authenticate using the assistant container" ;;
+        "--force") echo "Force operation (bypass authentication checks with --login)" ;;
         "--check-requirements") echo "Check system requirements (Git, Docker, permissions)" ;;
         "--skip-checks") echo "Skip automatic requirements checking" ;;
         "--shell") echo "Start interactive bash shell in container" ;;
@@ -381,6 +382,17 @@ parse_assistant_args() {
                 ;;
             --login)
                 LOGIN_ONLY="true"
+                # Check if next argument is --force
+                if [[ "$2" == "--force" ]]; then
+                    export FORCE_LOGIN="true"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --force)
+                # Can be used standalone or will be caught by --login above
+                export FORCE_LOGIN="true"
                 shift
                 ;;
             --check-requirements)

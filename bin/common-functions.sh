@@ -1242,7 +1242,7 @@ check_credentials() {
     # Assistant-specific credential checking
     case "$cli" in
         claude)
-            # Check for Claude credentials on the host in the config directory
+            # Check for Claude credentials on the host in the NyarlathotIA config directory
             # These will be mounted into the container at ~/.claude/
             if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
                 print_error "Claude is not authenticated"
@@ -1633,6 +1633,29 @@ login_assistant() {
         source "$provider_hooks_file"
     fi
 
+    # Check if already authenticated (unless --force used)
+    if [[ "${FORCE_LOGIN:-false}" != "true" ]]; then
+        if check_credentials "$assistant_cli" "$global_config_dir" "$config_dir_name" "$API_KEY_ENV"; then
+            print_success "✅ $assistant_cli is already authenticated"
+            print_info "📁 Config directory: $global_config_dir"
+
+            # Show file status
+            if [[ -f "$global_config_dir/.credentials.json" ]]; then
+                print_info "📁 Credentials: Found"
+            fi
+            if [[ -f "$global_config_dir/.claude.json" ]]; then
+                print_info "📁 Settings: Found"
+            fi
+
+            echo ""
+            print_info "💡 No login needed. To force re-authentication:"
+            print_info "   nyia-$assistant_cli --login --force"
+            return 0
+        fi
+    else
+        print_info "🔄 Force login requested - proceeding with re-authentication"
+    fi
+
     # Select Docker image to use
     local full_image_name
     if ! full_image_name=$(select_docker_image "$base_image_name" "$dev_mode" "$docker_image"); then
@@ -1653,21 +1676,27 @@ login_assistant() {
         full_image_name="$registry_image"
     fi
 
-    # Ask provider hook for login command, fallback to default pattern
+    # Ask provider hook for login command, fallback to modern commands
     local login_cmd
     if declare -f get_login_command > /dev/null; then
         print_verbose "Using provider-specific login command for $assistant_cli"
         read -a login_cmd <<< "$(get_login_command "$assistant_cli")"
         print_verbose "Login command: ${login_cmd[*]}"
     else
-        print_verbose "No get_login_command function found, using fallback for $assistant_cli"
-        # Fallback: use existing logic for backward compatibility
-        login_cmd=("$assistant_cli")
-        if [[ "$assistant_cli" == "codex" ]]; then
-            login_cmd+=("login")
-        else
-            login_cmd+=("auth" "login")
-        fi
+        print_verbose "No get_login_command function found, using modern fallback for $assistant_cli"
+        # Modern fallback: use current command patterns
+        case "$assistant_cli" in
+            claude)
+                login_cmd=("claude" "setup-token")
+                ;;
+            codex)
+                login_cmd=("$assistant_cli" "login")
+                ;;
+            *)
+                # Default for other assistants
+                login_cmd=("$assistant_cli" "login")
+                ;;
+        esac
         print_verbose "Fallback login command: ${login_cmd[*]}"
     fi
     case "$auth_method" in
