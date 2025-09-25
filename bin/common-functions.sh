@@ -1427,6 +1427,7 @@ run_debug_shell() {
         -v "$project_data_dir":/data:rw \
         -v "$global_config_dir":/nyia-global:rw \
         -v "$global_config_dir":/home/node/.${assistant_cli}:rw \
+        -v "$global_config_dir":/home/node/.config/${assistant_cli}:rw \
         "${docker_env_args[@]}" \
         --name "$container_name" \
         "$full_image_name"
@@ -1535,6 +1536,7 @@ run_docker_container() {
         -v "$project_data_dir":/data:rw \
         -v "$global_config_dir":/nyia-global:rw \
         -v "$global_config_dir":/home/node/.${assistant_cli}:rw \
+        -v "$global_config_dir":/home/node/.config/${assistant_cli}:rw \
         "${docker_env_args[@]}" \
         --name "$container_name" \
         "$full_image_name" "${final_args[@]}"
@@ -1735,6 +1737,7 @@ login_assistant() {
         $(get_docker_user_args)
         -v "$global_config_dir":/nyia-global:rw
         -v "$global_config_dir":/home/node/.${assistant_cli}:rw
+        -v "$global_config_dir":/home/node/.config/${assistant_cli}:rw
         -e NYIA_ASSISTANT_CLI="$assistant_cli"
         -e NYIA_CONTEXT_DIR="$config_dir_name"
     )
@@ -1815,6 +1818,10 @@ kill \$watcher_pid 2>/dev/null || true
 if [[ \$login_exit -eq 0 && -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
     cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
     echo "Final config preservation complete"
+
+    # Try to auto-exit Claude after successful setup (hacky but works)
+    echo "Attempting to auto-exit Claude..."
+    echo "/quit" | timeout 2 claude 2>/dev/null || true
 fi
 
 exit \$login_exit
