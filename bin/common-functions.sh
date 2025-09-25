@@ -1689,7 +1689,7 @@ login_assistant() {
         # Modern fallback: use current command patterns
         case "$assistant_cli" in
             claude)
-                login_cmd=("claude" "setup-token")
+                login_cmd=("claude" "/quit")
                 ;;
             codex)
                 login_cmd=("$assistant_cli" "login")
@@ -1807,7 +1807,7 @@ login_assistant() {
 ) &
 watcher_pid=\$!
 
-# Run the actual login command
+# Run the actual login command (normal claude)
 $login_cmd_str
 login_exit=\$?
 
@@ -1818,10 +1818,6 @@ kill \$watcher_pid 2>/dev/null || true
 if [[ \$login_exit -eq 0 && -f "/home/node/.claude.json" && ! -L "/home/node/.claude.json" ]]; then
     cp "/home/node/.claude.json" "/home/node/.claude/.claude.json"
     echo "Final config preservation complete"
-
-    # Try to auto-exit Claude after successful setup (hacky but works)
-    echo "Attempting to auto-exit Claude..."
-    echo "/quit" | timeout 2 claude 2>/dev/null || true
 fi
 
 exit \$login_exit
