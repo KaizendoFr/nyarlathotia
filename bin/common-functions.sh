@@ -154,6 +154,59 @@ generate_commented_config() {
     } > "$target_file"
 }
 
+# Validate assistant configuration file
+validate_config() {
+    local config_file="$1"
+    local required_fields=("ASSISTANT_NAME" "ASSISTANT_CLI" "BASE_IMAGE_NAME" "DOCKERFILE_PATH" "CONTEXT_DIR_NAME")
+
+    # Check if file exists and is readable
+    [[ -f "$config_file" && -r "$config_file" ]] || return 1
+
+    # Check for required fields
+    for field in "${required_fields[@]}"; do
+        if ! grep -q "^${field}=" "$config_file" 2>/dev/null; then
+            return 1  # Missing required field
+        fi
+    done
+    return 0  # Valid config
+}
+
+# Repair broken assistant configuration by adding missing required fields
+repair_config() {
+    local config_file="$1"
+    local example_file="$2"
+    local assistant_name="$3"
+
+    echo "Repairing configuration: $(basename "$config_file")"
+
+    # Add missing required fields with defaults
+    if ! grep -q "^ASSISTANT_NAME=" "$config_file" 2>/dev/null; then
+        echo "ASSISTANT_NAME=\"$assistant_name\"" >> "$config_file"
+        echo "  Added: ASSISTANT_NAME"
+    fi
+
+    if ! grep -q "^ASSISTANT_CLI=" "$config_file" 2>/dev/null; then
+        echo "ASSISTANT_CLI=\"$assistant_name\"" >> "$config_file"
+        echo "  Added: ASSISTANT_CLI"
+    fi
+
+    if ! grep -q "^BASE_IMAGE_NAME=" "$config_file" 2>/dev/null; then
+        echo "BASE_IMAGE_NAME=\"nyarlathotia-$assistant_name\"" >> "$config_file"
+        echo "  Added: BASE_IMAGE_NAME"
+    fi
+
+    # Add other required fields from example
+    for field in DOCKERFILE_PATH CONTEXT_DIR_NAME; do
+        if ! grep -q "^${field}=" "$config_file" 2>/dev/null; then
+            local value=$(grep "^${field}=" "$example_file" 2>/dev/null | head -1)
+            if [[ -n "$value" ]]; then
+                echo "$value" >> "$config_file"
+                echo "  Added: $field"
+            fi
+        fi
+    done
+}
+
 # Auto-generate assistant config files from examples
 generate_default_assistant_configs() {
     local user_config_dir="$1"
@@ -185,14 +238,23 @@ generate_default_assistant_configs() {
             # Always update example files (they might have changed)
             cp "$example_file" "$user_example"
             
-            # Generate .conf file if it doesn't exist
+            # Generate or repair .conf file
             local base_name=$(basename "$example_file" .conf.example)
             local target_file="$config_subdir/${base_name}.conf"
-            
+
             if [[ ! -f "$target_file" ]]; then
+                # Generate new config
                 generate_commented_config "$example_file" "$target_file"
                 if [[ "$VERBOSE" == "true" ]]; then
-                    print_info "Generated default config: ${base_name}.conf"
+                    print_info "Generated new config: ${base_name}.conf"
+                fi
+            elif ! validate_config "$target_file"; then
+                # Repair existing broken config
+                repair_config "$target_file" "$example_file" "$base_name"
+            else
+                # Config exists and is valid - no action needed
+                if [[ "$VERBOSE" == "true" ]]; then
+                    print_info "Config valid: ${base_name}.conf"
                 fi
             fi
         fi
