@@ -7,6 +7,23 @@ set -e
 script_name=$(basename "$0")
 assistant_name="${script_name#nyia-}"
 
+# Get platform-specific config directory
+case "$(uname -s)" in
+    Linux*)
+        config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyarlathotia"
+        ;;
+    Darwin*)
+        config_dir="$HOME/Library/Application Support/nyarlathotia"
+        ;;
+    CYGWIN*|MINGW*|MSYS*)
+        config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyarlathotia"
+        ;;
+    *)
+        # Unix fallback
+        config_dir="$HOME/.config/nyarlathotia"
+        ;;
+esac
+
 # Set configuration path and source template
-export ASSISTANT_CONFIG="$HOME/.config/nyarlathotia/config/${assistant_name}.conf"
+export ASSISTANT_CONFIG="$config_dir/config/${assistant_name}.conf"
 source "$(dirname "$0")/assistant-template.sh"

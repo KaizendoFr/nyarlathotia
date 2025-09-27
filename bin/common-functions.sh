@@ -11,25 +11,19 @@ set -e
 
 # === MOUNT EXCLUSIONS INTEGRATION ===
 # Load mount exclusions library if available
-script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-if [[ -f "$script_dir/../lib/mount-exclusions.sh" ]]; then
-    source "$script_dir/../lib/mount-exclusions.sh"
-fi
 
-# Load global mount exclusions configuration if available  
-# Only set defaults if not already set (preserve environment variables)
-if [[ -f "$script_dir/../config/mount-exclusions.conf" ]] && [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
-    source "$script_dir/../config/mount-exclusions.conf"
+# Runtime configuration (always present in dist)
+_exclusions_lib="$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"
+if [[ -f "$_exclusions_lib" ]]; then
+    source "$_exclusions_lib"
 fi
+# Runtime doesn't need mount-exclusions.conf or shared.sh - those are dev features
 
-# Load shared utility functions for context management
-if [[ -f "$script_dir/common/shared.sh" ]]; then
-    source "$script_dir/common/shared.sh"
-fi
+# Development override (removed in dist)
 
 # Load input validation functions for security
-if [[ -f "$script_dir/../lib/input-validation.sh" ]]; then
-    source "$script_dir/../lib/input-validation.sh"
+if [[ -f "$HOME/.local/lib/nyarlathotia/input-validation.sh" ]]; then
+    source "$HOME/.local/lib/nyarlathotia/input-validation.sh"
 fi
 
 # Platform-aware Docker user mapping
