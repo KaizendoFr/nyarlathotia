@@ -161,6 +161,41 @@ For assistant-specific help: nyia-<assistant> --help
 EOF
 }
 
+# Helper function for prompt customization help section
+show_prompt_customization_help() {
+    local assistant_name="$1"
+
+    cat << EOF
+
+Prompt Customization:
+  Customize assistant behavior and communication style
+
+  Setup:
+    # Directory auto-created on first run
+    # Examples: ~/.config/nyarlathotia/prompts/*.example
+
+  Quick activation:
+    # Global customizations (all assistants)
+    cp ~/.config/nyarlathotia/prompts/base-overrides.md.example \\
+       ~/.config/nyarlathotia/prompts/base-overrides.md
+
+    # ${assistant_name}-specific customizations
+    cp ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md.example \\
+       ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
+
+    # Edit and test
+    nano ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
+    nyia-${assistant_name} -p "test prompt" --verbose
+
+  Customization levels:
+    Global: ~/.config/nyarlathotia/prompts/base-overrides.md
+    ${assistant_name}: ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
+    Project: .nyarlathotia/prompts/{project,${assistant_name}}-overrides.md
+
+  Documentation: ~/.config/nyarlathotia/prompts/README.md
+EOF
+}
+
 show_assistant_help() {
     local assistant_name="$1"
     local thematic_alias="${2:-assistant}"
@@ -235,6 +270,12 @@ Operations:
 
 Power User:
   --build-custom-image     # Build custom image with overlays
+EOF
+
+    # Add prompt customization help
+    show_prompt_customization_help "$assistant_name"
+
+    cat << EOF
 
 Configuration:
   --disable-exclusions     # Disable mount exclusions

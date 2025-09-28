@@ -89,7 +89,10 @@ main() {
     if [[ -z "$PROJECT_PATH" ]]; then
         PROJECT_PATH=$(pwd)
     fi
-    
+
+    # Auto-initialize project prompts directory (Git-style behavior)
+    ensure_project_prompts_directory "$PROJECT_PATH"
+
     # Auto-initialize exclusions system on first run (Git-style behavior)
     # Only if exclusions are enabled and config doesn't exist
     if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
@@ -306,6 +309,40 @@ show_assistant_status() {
         echo "    Create at: .nyarlathotia/$assistant_name/overlay/Dockerfile"
     fi
     
+    # Show prompt customization status
+    echo ""
+    echo "=== Prompt Customization ==="
+    echo "  Directory: ~/.config/nyarlathotia/prompts/"
+
+    # Check for active overrides
+    local prompts_dir="$nyarlathotia_home/prompts"
+    local active_count=0
+
+    if [[ -f "$prompts_dir/base-overrides.md" ]]; then
+        echo "  ✓ Global base overrides active"
+        ((active_count++)) || true
+    fi
+
+    if [[ -f "$prompts_dir/${config_assistant_name}-overrides.md" ]]; then
+        echo "  ✓ ${config_assistant_name}-specific overrides active"
+        ((active_count++)) || true
+    fi
+
+    if [[ -f "$PROJECT_PATH/.nyarlathotia/prompts/project-overrides.md" ]]; then
+        echo "  ✓ Project overrides active"
+        ((active_count++)) || true
+    fi
+
+    if [[ -f "$PROJECT_PATH/.nyarlathotia/prompts/${config_assistant_name}-project.md" ]]; then
+        echo "  ✓ Project ${config_assistant_name}-specific overrides active"
+        ((active_count++)) || true
+    fi
+
+    if [[ $active_count -eq 0 ]]; then
+        echo "  No active customizations (using defaults)"
+        echo "  See: nyia-${config_assistant_name} --help for activation instructions"
+    fi
+
     # Show example overlays
     echo ""
     echo "=== Overlay Documentation ==="

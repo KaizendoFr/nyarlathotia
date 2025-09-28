@@ -216,10 +216,6 @@ generate_default_assistant_configs() {
     local config_subdir="$user_config_dir/config"
     ensure_directory_exists "$config_subdir"
     
-    # Create prompts subdirectory
-    local prompts_subdir="$user_config_dir/prompts"
-    ensure_directory_exists "$prompts_subdir"
-    
     # Create assistant-specific directories (critical for Docker mount persistence)
     for conf_file in "$project_config_dir"/*.conf.example; do
         if [[ -f "$conf_file" ]]; then
@@ -259,9 +255,34 @@ generate_default_assistant_configs() {
             fi
         fi
     done
-    
-    # Generate user prompts templates and README
-    generate_user_prompts_templates "$prompts_subdir"
+}
+
+# Ensure prompts directory exists with templates
+ensure_prompts_directory() {
+    local nyia_home="$1"
+    local prompts_dir="$nyia_home/prompts"
+
+    # Always ensure directory exists
+    ensure_directory_exists "$prompts_dir"
+
+    # Generate templates if README is missing (indicates first setup)
+    if [[ ! -f "$prompts_dir/README.md" ]]; then
+        generate_user_prompts_templates "$prompts_dir"
+    fi
+}
+
+# Ensure project-level prompts directory exists with templates
+ensure_project_prompts_directory() {
+    local project_path="$1"
+    local project_prompts_dir="$project_path/.nyarlathotia/prompts"
+
+    # Always ensure directory exists
+    ensure_directory_exists "$project_prompts_dir"
+
+    # Generate project-specific templates if README is missing
+    if [[ ! -f "$project_prompts_dir/README.md" ]]; then
+        generate_project_prompts_templates "$project_prompts_dir"
+    fi
 }
 
 # Generate user prompts directory with templates and README
@@ -386,6 +407,118 @@ EOF
     create_prompt_example_file "$prompts_dir/codex-overrides.md.example" "Codex" "Codex assistant"
 }
 
+# Generate project-level prompts directory with templates and README
+generate_project_prompts_templates() {
+    local prompts_dir="$1"
+
+    # Create README.md if it doesn't exist
+    local readme_file="$prompts_dir/README.md"
+    if [[ ! -f "$readme_file" ]]; then
+        cat > "$readme_file" << 'EOF'
+# Project-Level Prompt Customization
+
+This directory allows you to customize prompts specifically for this project.
+
+## How It Works
+
+Project prompts override global prompts and are applied in this order:
+1. Global prompts (`~/.config/nyarlathotia/prompts/`)
+2. **Project prompts** (this directory) ← HIGHEST PRIORITY
+
+## Available Files
+
+### Project-Wide Customizations
+- **`project-overrides.md`** - Custom behavior for ALL assistants in this project
+  - Project-specific coding standards
+  - Domain-specific terminology and approaches
+  - Project workflow preferences
+
+### Assistant-Specific Project Customizations
+- **`claude-project.md`** - Claude customizations for this project
+- **`gemini-project.md`** - Gemini customizations for this project
+- **`opencode-project.md`** - OpenCode customizations for this project
+- **`codex-project.md`** - Codex customizations for this project
+
+## Quick Start
+
+1. **Create project-wide overrides:**
+   ```bash
+   cp project-overrides.md.example project-overrides.md
+   nano project-overrides.md
+   ```
+
+2. **Create assistant-specific overrides:**
+   ```bash
+   cp claude-project.md.example claude-project.md
+   nano claude-project.md
+   ```
+
+## Examples
+
+Common project customizations:
+- Domain-specific language and terminology
+- Project-specific coding standards and patterns
+- Technology stack preferences (e.g., "use TypeScript", "prefer functional programming")
+- Database and API conventions for this project
+
+EOF
+    fi
+
+    # Create example files if they don't exist
+    create_project_prompt_example_file "$prompts_dir/project-overrides.md.example" "Project" "all assistants in this project"
+    create_project_prompt_example_file "$prompts_dir/claude-project.md.example" "Claude Project" "Claude assistant in this project"
+    create_project_prompt_example_file "$prompts_dir/gemini-project.md.example" "Gemini Project" "Gemini assistant in this project"
+    create_project_prompt_example_file "$prompts_dir/opencode-project.md.example" "OpenCode Project" "OpenCode assistant in this project"
+    create_project_prompt_example_file "$prompts_dir/codex-project.md.example" "Codex Project" "Codex assistant in this project"
+}
+
+# Helper function to create individual project prompt example files
+create_project_prompt_example_file() {
+    local file_path="$1"
+    local prompt_type="$2"
+    local scope="$3"
+
+    if [[ ! -f "$file_path" ]]; then
+        cat > "$file_path" << EOF
+# ${prompt_type} Customization
+
+## Project-Specific Instructions for ${scope}
+
+This file customizes prompts specifically for this project, overriding global settings.
+
+### Project Context
+- Project type: [e.g., Web application, Mobile app, Data science, etc.]
+- Technology stack: [e.g., React, Python, Docker, etc.]
+- Domain: [e.g., E-commerce, Healthcare, Finance, etc.]
+
+### Code Quality Standards [CONFIGURABLE]
+- Preferred patterns: [e.g., Repository pattern, MVC, Functional programming]
+- Naming conventions: [e.g., camelCase, snake_case, specific prefixes]
+- Documentation requirements: [e.g., JSDoc, Python docstrings, etc.]
+
+### Project-Specific Behavior [CONFIGURABLE]
+- Communication style: [e.g., Brief and direct, Detailed explanations, etc.]
+- Error handling approach: [e.g., Comprehensive logging, User-friendly messages]
+- Testing preferences: [e.g., Jest, pytest, specific test patterns]
+
+### Domain Knowledge [CONFIGURABLE]
+- Business terminology: [Define project-specific terms and concepts]
+- API conventions: [REST patterns, GraphQL schema conventions, etc.]
+- Database patterns: [ORM usage, query patterns, migration strategies]
+
+### Example Customizations
+\`\`\`markdown
+- Always use TypeScript for new components
+- Follow the repository pattern for data access
+- Use Tailwind CSS for styling
+- Prefer functional components over class components
+- Include comprehensive error handling in all API calls
+\`\`\`
+
+EOF
+    fi
+}
+
 # Helper function to create individual prompt example files
 create_prompt_example_file() {
     local file_path="$1"
@@ -456,7 +589,10 @@ get_nyarlathotia_home() {
         if [[ -d "$project_config_dir" ]]; then
             generate_default_assistant_configs "$NYARLATHOTIA_HOME" "$project_config_dir"
         fi
-        
+
+        # Ensure prompts directory exists
+        ensure_prompts_directory "$NYARLATHOTIA_HOME"
+
         echo "$NYARLATHOTIA_HOME"
         return 0
     fi
@@ -487,7 +623,10 @@ get_nyarlathotia_home() {
     if [[ -d "$project_config_dir" ]]; then
         generate_default_assistant_configs "$config_dir" "$project_config_dir"
     fi
-    
+
+    # Ensure prompts directory exists
+    ensure_prompts_directory "$config_dir"
+
     echo "$config_dir"
     return 0
 }
@@ -1532,6 +1671,11 @@ run_docker_container() {
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
     docker_env_args+=(-e NYIA_PROJECT_PATH="/workspace")
     docker_env_args+=(-e NYIA_BUILD_TIMESTAMP="$(date -Iseconds)")
+
+    # Pass work branch to container if set (for --work-branch support)
+    if [[ -n "${NYIA_WORK_BRANCH:-}" ]]; then
+        docker_env_args+=(-e NYIA_WORK_BRANCH="${NYIA_WORK_BRANCH}")
+    fi
     
     
     # Create environment file for Docker
@@ -2328,6 +2472,9 @@ run_assistant() {
             print_error "Failed to create or switch to branch"
             exit 1
         fi
+        # Capture the current branch after branch creation/switching for container
+        local current_work_branch=$(get_current_branch "$project_path")
+        export NYIA_WORK_BRANCH="$current_work_branch"
     fi
     
     if [[ "$shell_mode" == "true" ]]; then
@@ -2423,51 +2570,111 @@ validate_work_branch() {
     return 0
 }
 
-# Create or switch to work branch (enhanced version)
+# Check if branch exists locally, remotely, or not at all
+check_branch_existence() {
+    local branch_name="$1"
+    local project_path="${2:-$(pwd)}"
+
+    cd "$project_path" || return 3
+
+    # Update remote refs to get latest info
+    git fetch --quiet 2>/dev/null || true
+
+    # Check local branches first
+    if git branch | grep -q "^[* ] $branch_name$"; then
+        echo "local"
+        return 0
+    fi
+
+    # Check remote branches - handle both "origin/branch" and "branch" formats
+    local clean_branch="$branch_name"
+    if [[ "$branch_name" =~ ^origin/ ]]; then
+        clean_branch="${branch_name#origin/}"
+    fi
+
+    # Look for the branch on any remote
+    if git branch -r | grep -qE "(^|\s+)[^/]+/$clean_branch$"; then
+        echo "remote"
+        return 0
+    fi
+
+    # Branch doesn't exist anywhere
+    echo "none"
+    return 1
+}
+
+# Removed fuzzy matching - just show available branches
+
+# Create or switch to work branch (FIXED - no more surprise branch creation!)
 create_or_switch_work_branch() {
     local assistant_name="$1"
     local work_branch="$2"
     local base_branch="$3"
     local project_path="${4:-$(pwd)}"
-    
+
     cd "$project_path" || {
         print_error "Cannot access project path: $project_path"
         return 1
     }
-    
-    # Validate work branch
+
+    # Validate work branch first
     if ! validate_work_branch "$work_branch" "$project_path"; then
         return 1
     fi
-    
-    # 🔧 FIX: Determine actual base branch BEFORE any git operations
-    local actual_base_branch="${base_branch:-$(get_current_branch "$project_path")}"
-    
-    if [[ "${VERBOSE:-}" == "true" ]]; then
-        print_info "Debug: Current branch: $(get_current_branch "$project_path")"
-        print_info "Debug: Requested work branch: $work_branch"
-        print_info "Debug: Base branch (fallback): $actual_base_branch"
-    fi
-    
-    # Check if branch already exists
-    if git branch | grep -q "^[* ] $work_branch$"; then
-        # ACTION: USE existing branch - switch to it
-        print_info "🔄 USING existing work branch: $work_branch"
-        git checkout "$work_branch" || {
-            print_error "Failed to switch to existing branch: $work_branch"
+
+    # 🔥 NEW: Check if branch actually exists before doing anything
+    local existence_status
+    existence_status=$(check_branch_existence "$work_branch" "$project_path")
+    local check_result=$?
+
+    case "$existence_status" in
+        "local")
+            # Switch to existing local branch
+            print_info "🔄 USING existing local branch: $work_branch"
+            git checkout "$work_branch" || {
+                print_error "Failed to switch to existing branch: $work_branch"
+                return 1
+            }
+            print_success "✅ Now using work branch: $work_branch"
+            ;;
+        "remote")
+            # Checkout remote branch as local tracking branch
+            print_info "🌐 CHECKING OUT remote branch as local: $work_branch"
+            local clean_branch="$work_branch"
+            [[ "$work_branch" =~ ^origin/ ]] && clean_branch="${work_branch#origin/}"
+
+            # Find the actual remote reference
+            local remote_ref=$(git branch -r | grep -E "(^|\s+)[^/]+/$clean_branch$" | head -1 | sed 's/^[[:space:]]*//')
+
+            git checkout -b "$clean_branch" "$remote_ref" || {
+                print_error "Failed to checkout remote branch: $remote_ref"
+                return 1
+            }
+            print_success "✅ Created local tracking branch: $clean_branch from $remote_ref"
+            ;;
+        "none")
+            # 🔥 SIMPLE & CLEAR: Branch doesn't exist = ERROR + list + STOP
+            print_error "❌ Branch '$work_branch' does not exist locally or on remote"
+            echo ""
+            print_info "📍 Available local branches:"
+            git branch | sed 's/^[* ]*/    /' | head -10
+            echo ""
+            print_info "🌐 Available remote branches:"
+            git branch -r | sed 's/^[[:space:]]*/    /' | head -10
+            echo ""
+            print_info "💡 To create a NEW branch instead:"
+            print_info "    nyia-$assistant_name --base-branch main     # Creates timestamped branch from main"
+            print_info "    nyia-$assistant_name                        # Creates timestamped branch from current"
+            echo ""
+            print_error "🚫 STOPPED: Branch does not exist. Check spelling or create new branch."
             return 1
-        }
-        print_success "✅ Now using work branch: $work_branch"
-    else
-        # ACTION: CREATE new branch from determined base
-        print_info "🆕 CREATING new work branch: $work_branch from $actual_base_branch"
-        git checkout -b "$work_branch" "$actual_base_branch" || {
-            print_error "Failed to create branch: $work_branch from $actual_base_branch"
+            ;;
+        *)
+            print_error "Failed to check branch existence"
             return 1
-        }
-        print_success "✅ Created and switched to work branch: $work_branch"
-    fi
-    
+            ;;
+    esac
+
     return 0
 }
 
@@ -2491,7 +2698,10 @@ create_assistant_branch() {
     
     if [[ -n "$work_branch" ]]; then
         # Use specified work branch (with validation)
-        create_or_switch_work_branch "$assistant_name" "$work_branch" "$base_branch" "$project_path"
+        if ! create_or_switch_work_branch "$assistant_name" "$work_branch" "$base_branch" "$project_path"; then
+            # STOP EXECUTION if work branch fails
+            return 1
+        fi
     else
         # Default behavior - create timestamped branch
         local timestamp=$(date +%Y-%m-%d-%H%M%S)
