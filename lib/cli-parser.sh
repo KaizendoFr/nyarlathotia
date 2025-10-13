@@ -21,6 +21,7 @@ fi
 # Mode flags
 export SHOW_HELP="false"
 export SHOW_STATUS="false"
+export SHOW_VERSION="false"
 export VERBOSE="false"
 export LOGIN_ONLY="false"
 export CHECK_REQUIREMENTS="false"  # Moved outside DEV_BUILD - needed in runtime
@@ -59,6 +60,7 @@ get_global_arg_desc() {
     case "$1" in
         "--help,-h") echo "Show help information" ;;
         "--verbose,-v") echo "Enable verbose output" ;;
+        "--version") echo "Show installed version and exit" ;;
         "--path") echo "Work on different project directory" ;;
         *) echo "" ;;
     esac
@@ -66,7 +68,7 @@ get_global_arg_desc() {
 
 # Get all global arguments
 get_global_args() {
-    echo "--help,-h --verbose,-v --path"
+    echo "--help,-h --verbose,-v --version --path"
 }
 
 # Get description for assistant arguments
@@ -328,6 +330,10 @@ parse_dispatcher_args() {
                 SHOW_HELP="true"
                 shift
                 ;;
+            --version)
+                SHOW_VERSION="true"
+                return 0
+                ;;
             --verbose|-v)
                 export VERBOSE="true"
                 shift
@@ -373,6 +379,10 @@ parse_assistant_args() {
         case $1 in
             --help|-h)
                 SHOW_HELP="true"
+                return 0
+                ;;
+            --version)
+                SHOW_VERSION="true"
                 return 0
                 ;;
             --verbose|-v)

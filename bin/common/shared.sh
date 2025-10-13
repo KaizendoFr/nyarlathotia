@@ -632,11 +632,13 @@ get_docker_registry() {
 get_image_name() {
     local assistant="$1"
     local registry=$(get_docker_registry)
-    
+
     if [[ -n "$registry" ]]; then
+        # Registry: keep nyarlathotia- prefix (matches GHCR naming)
         echo "${registry}/nyarlathotia-${assistant}:latest"
     else
-        echo "nyarlathotia/nyarlathotia-${assistant}:latest"
+        # Local: no prefix (clean names for dev)
+        echo "nyarlathotia/${assistant}:latest"
     fi
 }
 

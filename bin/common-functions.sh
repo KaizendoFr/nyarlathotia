@@ -250,7 +250,7 @@ generate_default_assistant_configs() {
             else
                 # Config exists and is valid - no action needed
                 if [[ "$VERBOSE" == "true" ]]; then
-                    print_info "Config valid: ${base_name}.conf"
+                    print_verbose "Config valid: ${base_name}.conf"
                 fi
             fi
         fi
@@ -627,7 +627,78 @@ get_nyarlathotia_home() {
     # Ensure prompts directory exists
     ensure_prompts_directory "$config_dir"
 
+    # Ensure VERSION file exists (migration for existing installations)
+    local version_file="$config_dir/VERSION"
+    if [[ ! -f "$version_file" ]]; then
+        echo "latest" > "$version_file" 2>/dev/null || true
+        print_verbose "Created VERSION file with default: latest"
+    fi
+
     echo "$config_dir"
+    return 0
+}
+
+# === VERSION MANAGEMENT ===
+
+# Get installed version from VERSION file
+# Returns: version string (e.g., "v0.0.5-alpha" or "latest")
+# Fallback: "latest" if file missing or corrupted
+get_installed_version() {
+    local nyia_home=$(get_nyarlathotia_home)
+    local version_file="$nyia_home/VERSION"
+
+    # Priority 1: Environment variable override (for power users)
+    if [[ -n "${NYIA_VERSION:-}" ]]; then
+        print_verbose "Using version from NYIA_VERSION env: $NYIA_VERSION"
+        echo "$NYIA_VERSION"
+        return 0
+    fi
+
+    # Priority 2: VERSION file
+    if [[ -f "$version_file" ]]; then
+        local version=$(cat "$version_file" 2>/dev/null | tr -d '[:space:]' | head -1)
+
+        # Validate version format (v*.*.* or "latest")
+        if [[ -n "$version" && ( "$version" == "latest" || "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ) ]]; then
+            print_verbose "Using installed version: $version"
+            echo "$version"
+            return 0
+        else
+            print_verbose "Invalid version in VERSION file: '$version', using latest"
+        fi
+    else
+        print_verbose "No VERSION file found at: $version_file"
+    fi
+
+    # Priority 3: Fallback to latest
+    print_verbose "Falling back to: latest"
+    echo "latest"
+    return 0
+}
+
+# Write version to VERSION file
+# Args: $1 = version string (e.g., "v0.0.5-alpha")
+set_installed_version() {
+    local version="$1"
+    local nyia_home=$(get_nyarlathotia_home)
+    local version_file="$nyia_home/VERSION"
+
+    if [[ -z "$version" ]]; then
+        print_error "set_installed_version: version argument required"
+        return 1
+    fi
+
+    # Validate version format
+    if [[ "$version" != "latest" && ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+        print_warning "Unusual version format: $version (expected v*.*.* or 'latest')"
+    fi
+
+    echo "$version" > "$version_file" || {
+        print_error "Failed to write VERSION file: $version_file"
+        return 1
+    }
+
+    print_verbose "Set installed version to: $version"
     return 0
 }
 
@@ -690,20 +761,28 @@ get_target_image() {
     local build_mode="$3"
     
 
-    # Runtime: Always use registry image with full name
+    # Runtime: Use registry image with installed version
     local assistant_name=$(basename "$base_name")
     local registry=$(get_docker_registry)
-    echo "${registry}/${assistant_name}:latest"
+    local version=$(get_installed_version)
+
+    print_verbose "Target image: ${registry}/${assistant_name}:${version}"
+    echo "${registry}/${assistant_name}:${version}"
+    return
 }
 
 find_best_image() {
     local base_name="$1"
     local prefer_dev="$2"
 
-    # Runtime: Use registry-based image selection
-    local assistant_name=$(basename "$base_name" | sed 's/^nyarlathotia-//')
+    # Runtime: Use registry-based image selection with installed version
+    local assistant_name=$(basename "$base_name")
     local registry=$(get_docker_registry)
-    echo "${registry}/${assistant_name}:latest"
+    local version=$(get_installed_version)
+
+    print_verbose "Best image: ${registry}/${assistant_name}:${version}"
+    echo "${registry}/${assistant_name}:${version}"
+    return
 }
 
 # === OUTPUT & UI ===
@@ -1612,7 +1691,15 @@ run_debug_shell() {
             print_warning "Failed to pull $full_image_name - using local image if available"
         }
     fi
-    
+
+    # Build additional credential mounts for codex (OpenAI CLI compatibility)
+    local credential_mounts=()
+    if [[ "$assistant_cli" == "codex" ]]; then
+        credential_mounts+=(-v "$global_config_dir":/home/node/.openai:rw)
+        credential_mounts+=(-v "$global_config_dir":/home/node/.config/openai:rw)
+        print_verbose "Added OpenAI credential mounts for codex"
+    fi
+
     # Direct bash execution, no entrypoint
     /usr/bin/docker run -it --rm \
         $(get_docker_network_args) \
@@ -1623,6 +1710,7 @@ run_debug_shell() {
         -v "$global_config_dir":/nyia-global:rw \
         -v "$global_config_dir":/home/node/.${assistant_cli}:rw \
         -v "$global_config_dir":/home/node/.config/${assistant_cli}:rw \
+        "${credential_mounts[@]}" \
         "${docker_env_args[@]}" \
         --name "$container_name" \
         "$full_image_name"
@@ -1729,6 +1817,14 @@ run_docker_container() {
         }
     fi
 
+    # Build additional credential mounts for codex (OpenAI CLI compatibility)
+    local credential_mounts=()
+    if [[ "$assistant_cli" == "codex" ]]; then
+        credential_mounts+=(-v "$global_config_dir":/home/node/.openai:rw)
+        credential_mounts+=(-v "$global_config_dir":/home/node/.config/openai:rw)
+        print_verbose "Added OpenAI credential mounts for codex"
+    fi
+
     /usr/bin/docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
@@ -1737,6 +1833,7 @@ run_docker_container() {
         -v "$global_config_dir":/nyia-global:rw \
         -v "$global_config_dir":/home/node/.${assistant_cli}:rw \
         -v "$global_config_dir":/home/node/.config/${assistant_cli}:rw \
+        "${credential_mounts[@]}" \
         "${docker_env_args[@]}" \
         --name "$container_name" \
         "$full_image_name" "${final_args[@]}"
@@ -2226,13 +2323,17 @@ show_assistant_status() {
 # === IMAGE MANAGEMENT ===
 list_assistant_images() {
     local base_image_name="$1"
-    
-    print_status "Available images for $base_image_name:"
-    
-    if command -v docker >/dev/null && docker images --filter "reference=${base_image_name}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q . 2>/dev/null; then
-        docker images --filter "reference=${base_image_name}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+
+    # Strip nyarlathotia- prefix to match actual image names
+    local clean_name="${base_image_name#nyarlathotia-}"
+    local search_pattern="nyarlathotia/${clean_name}"
+
+    print_status "Available images for ${clean_name}:"
+
+    if command -v docker >/dev/null && docker images --filter "reference=${search_pattern}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q . 2>/dev/null; then
+        docker images --filter "reference=${search_pattern}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
     else
-        print_info "No images found for $base_image_name"
+        print_info "No images found for ${clean_name}"
         print_info "Build images with:"
         print_info "  --build      # Production image (:latest)"
         print_info "  --build --dev # Development image (:dev)"
@@ -2577,14 +2678,15 @@ check_branch_existence() {
 
     cd "$project_path" || return 3
 
-    # Update remote refs to get latest info
-    git fetch --quiet 2>/dev/null || true
-
-    # Check local branches first
+    # Check local branches FIRST (no network needed)
     if git branch | grep -q "^[* ] $branch_name$"; then
         echo "local"
         return 0
     fi
+
+    # Only fetch from remote if not found locally
+    # This avoids SSH prompts for local-only branches
+    git fetch --quiet 2>/dev/null || true
 
     # Check remote branches - handle both "origin/branch" and "branch" formats
     local clean_branch="$branch_name"

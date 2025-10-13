@@ -332,18 +332,24 @@ get_exclusion_dirs() {
 # Global array for volume arguments
 declare -a VOLUME_ARGS
 
+# Global cache for nyarlathotia home (avoid calling get_nyarlathotia_home for every file)
+_NYIA_HOME_CACHE=""
+
 # Check if path is a NyarlathotIA system path that should not be excluded
 is_nyarlathotia_system_path() {
     local file_path="$1"
     local project_path="$2"
-    
-    # Get NyarlathotIA home (could be the project path itself)
-    # Use platform-aware function if available, otherwise fall back to default
-    if declare -f get_nyarlathotia_home >/dev/null 2>&1; then
-        local nyia_home="${NYARLATHOTIA_HOME:-$(get_nyarlathotia_home)}"
-    else
-        local nyia_home="${NYARLATHOTIA_HOME:-$HOME/.config/nyarlathotia}"
+
+    # Get NyarlathotIA home (cached to avoid repeated calls)
+    if [[ -z "$_NYIA_HOME_CACHE" ]]; then
+        # Use platform-aware function if available, otherwise fall back to default
+        if declare -f get_nyarlathotia_home >/dev/null 2>&1; then
+            _NYIA_HOME_CACHE="${NYARLATHOTIA_HOME:-$(get_nyarlathotia_home)}"
+        else
+            _NYIA_HOME_CACHE="${NYARLATHOTIA_HOME:-$HOME/.config/nyarlathotia}"
+        fi
     fi
+    local nyia_home="$_NYIA_HOME_CACHE"
     
     # If the project IS the NyarlathotIA home, check for system subdirs
     if [[ "$project_path" == "$nyia_home" ]] || [[ "$(realpath "$project_path")" == "$(realpath "$nyia_home")" ]]; then

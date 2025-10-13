@@ -158,7 +158,14 @@ main() {
         show_help "$(basename "$0")" "$config_assistant_name" ""
         exit 0
     fi
-    
+
+    # Handle version
+    if [[ "$SHOW_VERSION" == "true" ]]; then
+        local version=$(get_installed_version)
+        echo "NyarlathotIA version: $version"
+        exit 0
+    fi
+
     # Handle requirements check
     if [[ "$CHECK_REQUIREMENTS" == "true" ]]; then
         show_requirements_check "$PROJECT_PATH"
