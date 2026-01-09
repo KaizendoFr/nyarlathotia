@@ -1645,7 +1645,12 @@ run_debug_shell() {
     print_verbose "Starting debug shell container $container_name"
     print_verbose "Image: $full_image_name"
     print_verbose "Bypassing git-entrypoint for direct shell access"
-    
+
+    # Derive canonical container path for unique project identification (Plan 71)
+    local container_path
+    container_path=$(get_canonical_container_path "$project_path")
+    print_verbose "Project mount: $project_path -> $container_path"
+
     # Prepare environment variables
     local docker_env_args=()
     docker_env_args+=(-e NYIA_CONTEXT_DIR="${config_dir_name}")
@@ -1653,7 +1658,7 @@ run_debug_shell() {
     docker_env_args+=(-e NYIA_PROVIDER="${assistant_cli}")
     docker_env_args+=(-e NYIA_ENABLE_PROMPT_LAYERING="${NYIA_ENABLE_PROMPT_LAYERING:-true}")
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
-    docker_env_args+=(-e NYIA_PROJECT_PATH="/workspace")
+    docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
     
     
     # Create environment file for Docker
@@ -1671,7 +1676,7 @@ run_debug_shell() {
     
     # Get volume arguments (with or without exclusions)
     if declare -f create_volume_args >/dev/null 2>&1; then
-        create_volume_args "$project_path" "/workspace"
+        create_volume_args "$project_path" "$container_path"
         print_verbose "Using mount exclusions system"
         print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
         if [[ "$VERBOSE" == "true" ]]; then
@@ -1680,7 +1685,7 @@ run_debug_shell() {
             done
         fi
     else
-        VOLUME_ARGS=("-v" "$project_path:/workspace:rw")
+        VOLUME_ARGS=("-v" "$project_path:$container_path:rw")
         print_verbose "Using direct mount (exclusions not available)"
     fi
     
@@ -1720,6 +1725,43 @@ run_debug_shell() {
     trap - EXIT
 }
 
+get_canonical_container_path() {
+    # Derives a unique, reproducible container path from host project path
+    # Format: /project/{sanitized-dirname}-{5char-hash}
+    # Example: /home/user/myapp → /project/myapp-a3f2d
+    local project_path="$1"
+
+    # Get absolute path (resolves symlinks, relative paths)
+    local full_path
+    full_path=$(realpath "$project_path" 2>/dev/null || echo "$project_path")
+
+    # Extract last directory name
+    local dir_name
+    dir_name=$(basename "$full_path")
+
+    # Sanitize: lowercase, spaces→hyphens, remove special chars, limit to 40 chars
+    local sanitized
+    sanitized=$(echo "$dir_name" | \
+        tr '[:upper:]' '[:lower:]' | \
+        tr '[:space:]_' '--' | \
+        sed 's/[^a-z0-9-]//g' | \
+        sed 's/-\+/-/g' | \
+        sed 's/^-\|-$//g' | \
+        cut -c1-40)
+
+    # Handle edge case: empty sanitized name (all special chars)
+    if [[ -z "$sanitized" ]]; then
+        sanitized="project"
+    fi
+
+    # Generate 5-char hash from full absolute path (1M+ unique combinations)
+    local hash
+    hash=$(echo -n "$full_path" | sha256sum | cut -c1-5)
+
+    # Return canonical path
+    echo "/project/${sanitized}-${hash}"
+}
+
 run_docker_container() {
     local full_image_name="$1"
     local project_path="$2"
@@ -1733,12 +1775,15 @@ run_docker_container() {
     shift 9
     local container_args=("$@")
 
-    
+    # Derive canonical container path for unique project identification (Plan 71)
+    local container_path
+    container_path=$(get_canonical_container_path "$project_path")
 
     print_verbose "Running Docker container $container_name"
     print_verbose "Image: $full_image_name"
     print_verbose "Mount config dir: $global_config_dir -> /home/node/${config_dir_name}"
     print_verbose "Context dir env: $context_dir_name"
+    print_verbose "Project mount: $project_path -> $container_path"
 
     # Build container command arguments
     local final_args=()
@@ -1757,15 +1802,23 @@ run_docker_container() {
     docker_env_args+=(-e NYIA_PROVIDER="${assistant_cli}")
     docker_env_args+=(-e NYIA_ENABLE_PROMPT_LAYERING="${NYIA_ENABLE_PROMPT_LAYERING:-true}")
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
-    docker_env_args+=(-e NYIA_PROJECT_PATH="/workspace")
+    docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
     docker_env_args+=(-e NYIA_BUILD_TIMESTAMP="$(date -Iseconds)")
 
     # Pass work branch to container if set (for --work-branch support)
     if [[ -n "${NYIA_WORK_BRANCH:-}" ]]; then
         docker_env_args+=(-e NYIA_WORK_BRANCH="${NYIA_WORK_BRANCH}")
     fi
-    
-    
+
+    # Pass RAG settings to container (Plan 66 - Opt-in RAG)
+    if [[ -n "${ENABLE_RAG:-}" ]]; then
+        docker_env_args+=(-e ENABLE_RAG="${ENABLE_RAG}")
+    fi
+    if [[ -n "${RAG_MODEL:-}" ]]; then
+        docker_env_args+=(-e RAG_MODEL="${RAG_MODEL}")
+    fi
+
+
     # Create environment file for Docker
     local env_file=$(create_docker_env_file "$project_path" "$assistant_cli")
     docker_env_args+=("--env-file" "$env_file")
@@ -1781,7 +1834,7 @@ run_docker_container() {
     
     # Get volume arguments (with or without exclusions)
     if declare -f create_volume_args >/dev/null 2>&1; then
-        create_volume_args "$project_path" "/workspace"
+        create_volume_args "$project_path" "$container_path"
         print_verbose "Using mount exclusions system"
         print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
         if [[ "$VERBOSE" == "true" ]]; then
@@ -1790,7 +1843,7 @@ run_docker_container() {
             done
         fi
     else
-        VOLUME_ARGS=("-v" "$project_path:/workspace:rw")
+        VOLUME_ARGS=("-v" "$project_path:$container_path:rw")
         print_verbose "Using direct mount (exclusions not available)"
     fi
     
@@ -1828,6 +1881,7 @@ run_docker_container() {
     /usr/bin/docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
+        -w "$container_path" \
         "${VOLUME_ARGS[@]}" \
         -v "$project_data_dir":/data:rw \
         -v "$global_config_dir":/nyia-global:rw \

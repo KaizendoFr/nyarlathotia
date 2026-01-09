@@ -43,6 +43,10 @@ export BASE_BRANCH=""
 export WORK_BRANCH=""
 export BUILD_CUSTOM_IMAGE=""
 
+# RAG control flags (Plan 66 - Opt-in)
+export ENABLE_RAG="false"
+export RAG_MODEL="nomic-embed-text"
+
 # Command and arguments
 export COMMAND=""
 export ASSISTANT_NAME=""
@@ -91,13 +95,16 @@ get_assistant_arg_desc() {
         "--set-api-key") echo "Helper to set OpenAI API key for team plan users" ;;
         "--disable-exclusions") echo "Disable mount exclusions for this session" ;;
         "--prompt,-p") echo "Explicit user prompt (required for non-interactive mode)" ;;
+        "--rag") echo "Enable RAG codebase search (requires Ollama)" ;;
+        "--rag-verbose") echo "Enable verbose debug logging for RAG indexing" ;;
+        "--rag-model") echo "Override embedding model (default: nomic-embed-text)" ;;
         *) echo "" ;;
     esac
 }
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p"
+    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose --rag-model"
 }
 
 # Get description for dispatcher arguments
@@ -285,6 +292,11 @@ Configuration:
   --check-requirements    # Check system requirements
   --setup                 # Interactive setup (OpenCode)
   --set-api-key           # Helper to set API key
+
+RAG (Codebase Search):
+  --rag                    # Enable RAG codebase search (requires Ollama)
+  --rag-verbose            # Enable verbose debug logging for RAG indexing
+  --rag-model <name>       # Override embedding model (default: nomic-embed-text)
 EOF
 
 
@@ -503,6 +515,19 @@ parse_assistant_args() {
                     echo "Error: --prompt requires an argument" >&2
                     echo "Usage: --prompt \"Your prompt text\"" >&2
                     echo "   or: -p \"Your prompt text\"" >&2
+                    exit 1
+                fi
+                ;;
+            --rag)
+                export ENABLE_RAG="true"
+                shift
+                ;;
+            --rag-model)
+                if [[ -n "$2" ]]; then
+                    export RAG_MODEL="$2"
+                    shift 2
+                else
+                    echo "Error: --rag-model requires model name" >&2
                     exit 1
                 fi
                 ;;
@@ -765,6 +790,8 @@ debug_args() {
         echo "COMMAND: $COMMAND" >&2
         echo "ASSISTANT_NAME: $ASSISTANT_NAME" >&2
         echo "USER_PROMPT: $USER_PROMPT" >&2
+        echo "ENABLE_RAG: $ENABLE_RAG" >&2
+        echo "RAG_MODEL: $RAG_MODEL" >&2
         echo "REMAINING_ARGS: ${REMAINING_ARGS[*]}" >&2
         echo "======================" >&2
     fi
