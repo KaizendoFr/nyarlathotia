@@ -1971,9 +1971,8 @@ login_assistant() {
     local dockerfile_path="$3"
     local config_dir_name="$4"
     local auth_method="$5"
-    local dev_mode="${6:-false}"
-    local shell_mode="${7:-false}"
-    local docker_image="${8:-}"
+    local shell_mode="${6:-false}"
+    local docker_image="${7:-}"
 
     local nyia_home=$(get_nyarlathotia_home)
     local global_config_dir="$nyia_home/$assistant_cli"
@@ -2011,7 +2010,7 @@ login_assistant() {
 
     # Select Docker image to use
     local full_image_name
-    if ! full_image_name=$(select_docker_image "$base_image_name" "$dev_mode" "$docker_image"); then
+    if ! full_image_name=$(select_docker_image "$base_image_name" "$docker_image"); then
         print_error "Failed to select Docker image for login"
         exit 1
     fi
@@ -2396,9 +2395,8 @@ list_assistant_images() {
 
 select_docker_image() {
     local base_image_name="$1"
-    local dev_mode="$2"
-    local docker_image="$3"
-    
+    local docker_image="$2"
+
     # Use flavor-aware image resolution
     # Precedence: --image > --flavor > default
     local selected_image
@@ -2427,65 +2425,47 @@ select_docker_image() {
 # List available flavors for an assistant
 list_assistant_flavors() {
     local assistant_name="$1"
-    
+
     echo "NyarlathotIA ${assistant_name} - Available Flavors:"
     echo ""
-    
-    # For now, show hardcoded common flavors since Phase 3 will implement registry discovery
-    echo "Language Runtimes:"
-    echo "  node        - Node.js latest"
-    echo "  node18      - Node.js 18.x"
-    echo "  node20      - Node.js 20.x"
-    echo "  python      - Python latest"
-    echo "  python311   - Python 3.11"
-    echo "  python312   - Python 3.12"
-    echo "  rust        - Rust latest"
-    echo "  go          - Go latest"
-    echo "  php         - PHP latest"
-    echo "  php81       - PHP 8.1"
-    echo "  php82       - PHP 8.2"
+
+    echo "Language Development:"
+    echo "  python      - Python dev tools (pytest, black, mypy, ruff, isort, ipython)"
+    echo "  php         - Multi-version PHP 7.1-8.3 (PHPUnit, PHPStan, PHP-CS-Fixer)"
+    echo "  node        - Node.js dev tools (yarn, pnpm, typescript, biome, vitest, tsx, nodemon)"
     echo ""
-    
-    echo "Frameworks:"
-    echo "  nextjs      - Next.js optimized"
-    echo "  react       - React optimized"
-    echo "  laravel     - Laravel optimized"
-    echo "  django      - Django optimized"
-    echo "  fastapi     - FastAPI optimized"
-    echo "  express     - Express.js optimized"
+
+    echo "Frontend Development:"
+    echo "  react       - React dev tools (vite, storybook, @testing-library/react + node tools)"
+    echo "  expo        - React Native with Expo (expo-cli, eas-cli for cloud builds)"
     echo ""
-    
-    echo "Specialized Tools:"
-    echo "  docker      - Docker tooling included"
-    echo "  k8s         - Kubernetes tools"
-    echo "  terraform   - Terraform included"
-    echo "  aws         - AWS CLI and tools"
-    echo "  gcp         - Google Cloud tools"
+
+    echo "Testing:"
+    echo "  cypress     - E2E testing with Cypress (headless Chromium, AI-assisted test workflow)"
     echo ""
-    
+
     echo "Usage:"
-    echo "  nyia-${assistant_name} --flavor=node18 -p \"Review TypeScript code\""
-    echo "  nyia-${assistant_name} --flavor=python -p \"Debug this script\""
+    echo "  nyia-${assistant_name} --flavor python -p \"Write pytest tests\""
+    echo "  nyia-${assistant_name} --flavor react -p \"Create Storybook stories\""
+    echo "  nyia-${assistant_name} --flavor cypress -p \"Write E2E tests for login flow\""
     echo ""
-    
-    echo "Note: Actual availability depends on what images are built/available in registry."
-    echo "Use --image flag if you need a specific custom image."
+
+    echo "Note: Flavors are pulled from registry on first use. No local build required."
 }
 
 # === ASSISTANT EXECUTION ===
 run_assistant() {
     local assistant_name="$1"
-    local assistant_cli="$2" 
+    local assistant_cli="$2"
     local base_image_name="$3"
     local dockerfile_path="$4"
     local context_dir_name="$5"
     local project_path="$6"
     local prompt="$7"
     local base_branch="$8"
-    local dev_mode="${9:-false}"
-    local shell_mode="${10:-false}"
-    local docker_image="${11:-}"
-    local work_branch="${12:-}"
+    local shell_mode="${9:-false}"
+    local docker_image="${10:-}"
+    local work_branch="${11:-}"
 
     # Get NyarlathotIA home
     local nyarlathotia_home=$(get_nyarlathotia_home)
@@ -2553,7 +2533,7 @@ run_assistant() {
 
     # Select Docker image to use
     local full_image_name
-    if ! full_image_name=$(select_docker_image "$base_image_name" "$dev_mode" "$docker_image"); then
+    if ! full_image_name=$(select_docker_image "$base_image_name" "$docker_image"); then
         print_error "Failed to select Docker image"
         exit 1
     fi
@@ -2611,11 +2591,6 @@ run_assistant() {
     print_status "Starting $assistant_name for project: $(basename "$project_path")"
     print_status "Branch: $current_branch"
     print_status "Using image: $full_image_name"
-    if [[ "$dev_mode" == "true" ]]; then
-        print_status "Mode: Development"
-    else
-        print_status "Mode: Production (default)"
-    fi
     print_status "Project hash: $project_hash"
     print_status "Assistant config: $global_config_dir"
     print_status "Running as user: $(id -u):$(id -g) (mapped to node in container)"
@@ -2623,7 +2598,8 @@ run_assistant() {
     # Handle branch creation/switching before running container
     if [[ "$shell_mode" != "true" ]]; then
         # Create or switch to appropriate branch (skip for shell mode)
-        if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch"; then
+        # Pass CREATE_BRANCH (5th param) for --create flag support
+        if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
             print_error "Failed to create or switch to branch"
             exit 1
         fi
@@ -2762,11 +2738,13 @@ check_branch_existence() {
 # Removed fuzzy matching - just show available branches
 
 # Create or switch to work branch (FIXED - no more surprise branch creation!)
+# Parameter 5 (create_mode): "true" to create branch if missing, "false" for switch-only
 create_or_switch_work_branch() {
     local assistant_name="$1"
     local work_branch="$2"
     local base_branch="$3"
     local project_path="${4:-$(pwd)}"
+    local create_mode="${5:-false}"
 
     cd "$project_path" || {
         print_error "Cannot access project path: $project_path"
@@ -2786,7 +2764,11 @@ create_or_switch_work_branch() {
     case "$existence_status" in
         "local")
             # Switch to existing local branch
-            print_info "🔄 USING existing local branch: $work_branch"
+            if [[ "$create_mode" == "true" ]]; then
+                print_info "ℹ️  Branch '$work_branch' already exists locally, switching to it"
+            else
+                print_info "🔄 USING existing local branch: $work_branch"
+            fi
             git checkout "$work_branch" || {
                 print_error "Failed to switch to existing branch: $work_branch"
                 return 1
@@ -2795,7 +2777,11 @@ create_or_switch_work_branch() {
             ;;
         "remote")
             # Checkout remote branch as local tracking branch
-            print_info "🌐 CHECKING OUT remote branch as local: $work_branch"
+            if [[ "$create_mode" == "true" ]]; then
+                print_info "ℹ️  Branch '$work_branch' exists on remote, checking out locally"
+            else
+                print_info "🌐 CHECKING OUT remote branch as local: $work_branch"
+            fi
             local clean_branch="$work_branch"
             [[ "$work_branch" =~ ^origin/ ]] && clean_branch="${work_branch#origin/}"
 
@@ -2809,21 +2795,36 @@ create_or_switch_work_branch() {
             print_success "✅ Created local tracking branch: $clean_branch from $remote_ref"
             ;;
         "none")
-            # 🔥 SIMPLE & CLEAR: Branch doesn't exist = ERROR + list + STOP
-            print_error "❌ Branch '$work_branch' does not exist locally or on remote"
-            echo ""
-            print_info "📍 Available local branches:"
-            git branch | sed 's/^[* ]*/    /' | head -10
-            echo ""
-            print_info "🌐 Available remote branches:"
-            git branch -r | sed 's/^[[:space:]]*/    /' | head -10
-            echo ""
-            print_info "💡 To create a NEW branch instead:"
-            print_info "    nyia-$assistant_name --base-branch main     # Creates timestamped branch from main"
-            print_info "    nyia-$assistant_name                        # Creates timestamped branch from current"
-            echo ""
-            print_error "🚫 STOPPED: Branch does not exist. Check spelling or create new branch."
-            return 1
+            # Branch doesn't exist - behavior depends on create_mode
+            if [[ "$create_mode" == "true" ]]; then
+                # Create mode: create the branch from base_branch
+                print_info "🆕 Creating new branch: $work_branch from $base_branch"
+                git checkout -b "$work_branch" "$base_branch" || {
+                    print_error "Failed to create branch: $work_branch from $base_branch"
+                    return 1
+                }
+                print_success "✅ Created and switched to new branch: $work_branch"
+            else
+                # Switch-only mode: error with helpful suggestions
+                print_error "❌ Branch '$work_branch' does not exist locally or on remote"
+                echo ""
+                print_info "📍 Available local branches:"
+                git branch | sed 's/^[* ]*/    /' | head -10
+                echo ""
+                print_info "🌐 Available remote branches:"
+                git branch -r | sed 's/^[[:space:]]*/    /' | head -10
+                echo ""
+                print_info "💡 To CREATE this branch, use --create flag:"
+                print_info "    nyia-$assistant_name --work-branch $work_branch --create"
+                print_info "    nyia-$assistant_name --work-branch $work_branch --create --base-branch develop"
+                echo ""
+                print_info "💡 Or create a timestamped branch instead:"
+                print_info "    nyia-$assistant_name --base-branch main     # Creates timestamped branch from main"
+                print_info "    nyia-$assistant_name                        # Creates timestamped branch from current"
+                echo ""
+                print_error "🚫 STOPPED: Branch does not exist. Use --create or check spelling."
+                return 1
+            fi
             ;;
         *)
             print_error "Failed to check branch existence"
@@ -2835,14 +2836,16 @@ create_or_switch_work_branch() {
 }
 
 # Enhanced branch creation that supports both timestamped and work branches
+# Parameter 5 (create_mode): passed to create_or_switch_work_branch for --create flag
 create_assistant_branch() {
     local assistant_name="$1"
     local project_path="$2"
     local base_branch="${3:-}"  # Optional base branch
     local work_branch="${4:-}"  # Optional work branch name
-    
+    local create_mode="${5:-false}"  # Optional create mode for --create flag
+
     cd "$project_path" || return 1
-    
+
     # If base_branch is empty, use current branch
     if [[ -z "$base_branch" ]]; then
         base_branch=$(get_current_branch "$project_path")
@@ -2851,10 +2854,11 @@ create_assistant_branch() {
             return 1
         fi
     fi
-    
+
     if [[ -n "$work_branch" ]]; then
         # Use specified work branch (with validation)
-        if ! create_or_switch_work_branch "$assistant_name" "$work_branch" "$base_branch" "$project_path"; then
+        # Pass create_mode to allow branch creation with --create flag
+        if ! create_or_switch_work_branch "$assistant_name" "$work_branch" "$base_branch" "$project_path" "$create_mode"; then
             # STOP EXECUTION if work branch fails
             return 1
         fi

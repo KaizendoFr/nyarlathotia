@@ -642,6 +642,32 @@ get_image_name() {
     fi
 }
 
+# Get full image name for flavor images with dev mode support
+# Used by build_docker_image() for consistent flavor tagging in BUILD phase
+# @param assistant - assistant name (e.g., "claude", "gemini")
+# @param flavor - flavor name (e.g., "python", "node")
+# @param dev_mode - "true" for branch-tagged image, "false" for :latest (default: false)
+get_flavor_image_name() {
+    local assistant="$1"
+    local flavor="$2"
+    local dev_mode="${3:-false}"
+
+    local registry=$(get_docker_registry)
+    local flavor_name="${assistant}-${flavor}"
+
+    if [[ -n "$registry" ]]; then
+        # Registry: always use :latest (CI/CD handles versioning)
+        echo "${registry}/nyarlathotia-${flavor_name}:latest"
+    elif [[ "$dev_mode" == "true" ]]; then
+        # Dev mode: branch-tagged
+        local branch=$(sanitize_branch_name "$(get_current_branch)")
+        echo "nyarlathotia/${flavor_name}:dev-${branch}"
+    else
+        # Default local: latest tag
+        echo "nyarlathotia/${flavor_name}:latest"
+    fi
+}
+
 # Development mode detection - only exists in development source
 # Runtime distributions don't need this since features are preprocessed out
 

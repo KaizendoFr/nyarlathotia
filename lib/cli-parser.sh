@@ -41,6 +41,7 @@ export DISABLE_EXCLUSIONS="false"
 export PROJECT_PATH=""
 export BASE_BRANCH=""
 export WORK_BRANCH=""
+export CREATE_BRANCH="false"
 export BUILD_CUSTOM_IMAGE=""
 
 # RAG control flags (Plan 66 - Opt-in)
@@ -85,6 +86,7 @@ get_assistant_arg_desc() {
         "--list-images") echo "List all available Docker images for this assistant" ;;
         "--base-branch") echo "Specify Git base branch to work from" ;;
         "--work-branch") echo "Reuse existing work branch for your work" ;;
+        "--create") echo "Create work branch if it doesn't exist (use with --work-branch)" ;;
         "--build-custom-image") echo "Build custom Docker image with your overlays (power users)" ;;
         "--setup") echo "Interactive model/provider setup (OpenCode)" ;;
         "--login") echo "Authenticate using the assistant container" ;;
@@ -104,7 +106,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose --rag-model"
+    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose --rag-model"
 }
 
 # Get description for dispatcher arguments
@@ -215,10 +217,10 @@ show_assistant_help() {
         source "$script_dir/../bin/common/shared.sh"
     fi
     
-    # Get available overlay examples
-    local overlay_examples=""
-    if [[ -d "docker/overlay-examples" ]]; then
-        overlay_examples=$(ls -1 docker/overlay-examples/ 2>/dev/null | grep -v "README.md" | head -6)
+    # Get available overlay templates
+    local overlay_templates=""
+    if [[ -d "docker/overlay-templates" ]]; then
+        overlay_templates=$(ls -1 docker/overlay-templates/ 2>/dev/null | grep -v "README.md" | head -6)
     fi
     
     cat << EOF
@@ -241,10 +243,10 @@ Power User Overlays:
   Example overlay content:
 EOF
     
-    # Show available overlay examples with descriptions
-    if [[ -n "$overlay_examples" ]]; then
-        echo "$overlay_examples" | while read -r example; do
-            case "$example" in
+    # Show available overlay templates with descriptions
+    if [[ -n "$overlay_templates" ]]; then
+        echo "$overlay_templates" | while read -r template; do
+            case "$template" in
                 "python-latest") echo "    python-latest/    # Python with pytest, black, ruff, mypy" ;;
                 "php-82") echo "    php-82/          # PHP 8.2 with PHPUnit, PHPStan" ;;
                 "php-81") echo "    php-81/          # PHP 8.1 environment" ;;
@@ -252,17 +254,17 @@ EOF
                 "php-73") echo "    php-73/          # PHP 7.3 for legacy projects" ;;
                 "data-science") echo "    data-science/    # Jupyter, pandas, sklearn" ;;
                 "web-dev") echo "    web-dev/         # FastAPI, Django, Flask" ;;
-                *) echo "    $example/" ;;
+                *) echo "    $template/" ;;
             esac
         done
     else
-        echo "    (No examples found in docker/overlay-examples/)"
+        echo "    (No templates found in docker/overlay-templates/)"
     fi
     
     cat << EOF
-  
-  Setup overlay:
-    cp docker/overlay-examples/python-latest/Dockerfile ~/.config/nyarlathotia/${assistant_name}/overlay/
+
+  Setup overlay from template:
+    cp docker/overlay-templates/python-latest/Dockerfile ~/.config/nyarlathotia/${assistant_name}/overlay/
     nyia-${assistant_name} --build
   
   Overlay locations (applied in order):
@@ -503,6 +505,10 @@ parse_assistant_args() {
                     exit 1
                 fi
                 ;;
+            --create)
+                CREATE_BRANCH="true"
+                shift
+                ;;
             --build-custom-image)
                 BUILD_CUSTOM_IMAGE="true"
                 shift
@@ -688,7 +694,19 @@ validate_args() {
         echo "Error: --image cannot be used with --build (build creates specific images)" >&2
         exit 1
     fi
-    
+
+    # Validate --create requires --work-branch
+    if [[ "$CREATE_BRANCH" == "true" && -z "$WORK_BRANCH" ]]; then
+        echo "Error: --create requires --work-branch" >&2
+        echo "" >&2
+        echo "The --create flag explicitly creates a branch if it doesn't exist." >&2
+        echo "Usage: nyia-assistant --work-branch feature/my-branch --create" >&2
+        echo "" >&2
+        echo "Without --create, --work-branch only switches to existing branches" >&2
+        echo "(this prevents accidental branch creation from typos)." >&2
+        exit 1
+    fi
+
     # New validation: For assistant mode, require explicit -p flag for prompts
     # No validation needed for dispatcher mode (it handles subcommands)
     if [[ "$SCRIPT_TYPE" == "assistant" && ${#REMAINING_ARGS[@]} -gt 0 && -z "$USER_PROMPT" ]]; then

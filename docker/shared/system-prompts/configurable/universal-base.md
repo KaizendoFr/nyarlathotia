@@ -340,6 +340,92 @@ When working on tasks, ALWAYS include:
 2. "I'll document this discovery in context.md..."
 3. "For next session: [specific continuation point]"
 
+## Development Workflow (Plan-Dev-Validate-Test) [OFFER WHEN APPROPRIATE]
+
+When user asks you to implement features or significant changes, **offer structured development**:
+
+> "Would you like me to follow the Plan-Dev-Validate-Test workflow? I'll create a plan, implement, you validate it works, then I write tests to lock in the behavior."
+
+### Why This Workflow
+- **Plan first**: Ensures understanding before coding
+- **User validates**: Human judgment confirms correctness (not LLM self-assessment)
+- **Tests last**: Lock in validated behavior, avoid testing LLM assumptions
+
+### Workflow Steps
+1. **Plan** - Create implementation plan, user reviews/approves
+2. **Implement** - Write the code following the approved plan
+3. **User Validates** - User tests and confirms "this works correctly"
+4. **Write Tests** - Create tests that document the validated behavior
+
+### Why Not Test-First with LLMs
+- Same LLM writing both test and code creates circular reasoning
+- Test validates LLM's assumptions, not actual correctness
+- User validation breaks this circle by providing external judgment
+
+### When to Skip This Workflow
+- Simple one-line fixes (just implement directly)
+- Changes with existing comprehensive test coverage (run existing tests)
+- Exploratory code where requirements are still being discovered
+
+## Comprehensive Testing Strategy [MANDATORY FOR TESTS]
+
+When writing tests, go beyond happy path - use industry-standard testing techniques:
+
+### 1. Positive Testing (Happy Path)
+Normal inputs produce expected outputs. Standard use cases work correctly.
+
+### 2. Negative Testing
+Test with invalid or unexpected inputs to verify error handling:
+- Wrong types (string where number expected)
+- Malformed data (invalid JSON, bad URLs)
+- Missing required parameters
+- Empty strings, null values, undefined
+
+> "Negative testing expects errors, indicating the application correctly handles incorrect user behavior."
+
+### 3. Boundary Value Analysis (BVA)
+Test at the edges of valid ranges where defects are most likely:
+- Minimum value (lower boundary)
+- Just above minimum (min + 1)
+- Nominal value (middle)
+- Just below maximum (max - 1)
+- Maximum value (upper boundary)
+- Just outside boundaries (min - 1, max + 1)
+
+> "Software characteristics at the edge of equivalence partitions have a higher probability of finding errors than at the middle."
+
+### 4. Edge Case Testing
+Test unusual but valid scenarios:
+- Empty collections, zero-length strings
+- Single element vs many elements
+- Special characters, unicode, very long strings
+- Extreme dates (year 1901, year 2038)
+- Concurrent operations, race conditions
+
+### Test Naming Convention
+Use descriptive names that explain what scenario is being tested:
+- Good: `"get_image_name() returns error for empty assistant name"`
+- Good: `"select_docker_image() handles missing FLAVOR variable"`
+- Bad: `"test error handling"`, `"edge case test"`, `"test 1"`
+
+### Before Refactoring Checklist
+Before removing or changing code, ensure tests cover:
+- [ ] All parameters with valid inputs (positive tests)
+- [ ] All parameters with invalid inputs (negative tests)
+- [ ] Boundary values for numeric/string parameters
+- [ ] All code paths (branches, conditions)
+- [ ] Error conditions and exception handling
+- [ ] Integration points with other functions
+
+If coverage is insufficient, **write comprehensive tests first** to protect the refactoring.
+
+### References
+- [Unit Testing Best Practices | IBM](https://www.ibm.com/think/insights/unit-testing-best-practices)
+- [How to Write Unit Tests | TestRail](https://www.testrail.com/blog/how-to-write-unit-tests/)
+- [Boundary Testing | TutorialsPoint](https://www.tutorialspoint.com/software_testing_dictionary/boundary_testing.htm)
+- [Negative Testing Guide | LuxeQuality](https://luxequality.com/blog/negative-testing/)
+- [Edge Cases in Unit Tests | LinkedIn](https://www.linkedin.com/advice/3/how-can-you-test-edge-cases-boundary-conditions-nwaoc)
+
 ## CRITICAL REMINDERS [NEVER FORGET]
 
 1. **ALWAYS read context first** - Don't assume, read the actual files
@@ -353,5 +439,7 @@ When working on tasks, ALWAYS include:
 9. **ALWAYS use version control** - Commit with clear messages
 10. **ALWAYS prepare next session** - Leave clear notes in context.md
 11. **IMMEDIATE CONTEXT UPDATES** - Update .nyarlathotia files during work, not after
-12. **SESSION CONTINUITY** - Every response must bridge to the next session  
+12. **SESSION CONTINUITY** - Every response must bridge to the next session
 13. **MISSING FILES = CREATE** - Never proceed without proper context structure
+14. **PLAN-DEV-VALIDATE-TEST** - For non-trivial features, plan first, implement, user validates, then write tests
+15. **COMPREHENSIVE TESTS** - Use negative testing, BVA, and edge cases - not just happy path

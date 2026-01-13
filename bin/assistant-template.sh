@@ -238,7 +238,8 @@ main() {
     
     # Handle login mode
     if [[ "$LOGIN_ONLY" == "true" ]]; then
-        login_assistant "$ASSISTANT_CLI" "$BASE_IMAGE_NAME" "$DOCKERFILE_PATH" "$CONFIG_DIR_NAME" "$AUTH_METHOD" "$DEV_MODE" "$SHELL_MODE" "$DOCKER_IMAGE"
+        # Note: DEV_MODE removed as dead code (--dev requires --build, never reaches login)
+        login_assistant "$ASSISTANT_CLI" "$BASE_IMAGE_NAME" "$DOCKERFILE_PATH" "$CONFIG_DIR_NAME" "$AUTH_METHOD" "$SHELL_MODE" "$DOCKER_IMAGE"
         exit $?
     fi
     
@@ -252,8 +253,9 @@ main() {
     fi
     
     
-    # Execute assistant using abstracted functions  
-    run_assistant "$config_assistant_name" "$ASSISTANT_CLI" "$BASE_IMAGE_NAME" "$DOCKERFILE_PATH" "$CONTEXT_DIR_NAME" "$PROJECT_PATH" "$prompt" "$BASE_BRANCH" "$DEV_MODE" "$SHELL_MODE" "$DOCKER_IMAGE" "$WORK_BRANCH"
+    # Execute assistant using abstracted functions
+    # Note: DEV_MODE removed as dead code (--dev requires --build, never reaches RUN)
+    run_assistant "$config_assistant_name" "$ASSISTANT_CLI" "$BASE_IMAGE_NAME" "$DOCKERFILE_PATH" "$CONTEXT_DIR_NAME" "$PROJECT_PATH" "$prompt" "$BASE_BRANCH" "$SHELL_MODE" "$DOCKER_IMAGE" "$WORK_BRANCH"
 }
 
 # === STATUS DISPLAY ===

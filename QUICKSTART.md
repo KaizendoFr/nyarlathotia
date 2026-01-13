@@ -47,6 +47,26 @@ nyia-claude -p "Create a Python script with tests"
 nyia-claude --path /your/project -p "Add error handling"
 ```
 
+## Branch Management
+
+By default, NyarlathotIA creates timestamped branches for your work:
+
+```bash
+nyia-claude                    # Creates: claude-2026-01-11-143052
+```
+
+For named branches:
+
+```bash
+# Create a named branch
+nyia-claude --work-branch feature/my-feature --create
+
+# Resume existing branch
+nyia-claude --work-branch feature/my-feature
+```
+
+See [docs/BRANCH_MANAGEMENT.md](docs/BRANCH_MANAGEMENT.md) for detailed workflows.
+
 ## Power User Features
 
 ```bash
