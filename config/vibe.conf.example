@@ -1,0 +1,31 @@
+# NyarlathotIA Vibe Configuration
+
+# === ASSISTANT IDENTITY ===
+ASSISTANT_NAME="vibe"
+ASSISTANT_CLI="vibe"
+
+# === DOCKER CONFIGURATION ===
+BASE_IMAGE_NAME="nyarlathotia-vibe"
+DOCKERFILE_PATH="docker/vibe"
+CONFIG_FILENAME="VIBE.md"
+DEFAULT_USER="node"
+BASE_DOCKER_IMAGE="debian:12-slim"
+
+# === DEV IMAGE SETTINGS ===
+ALLOW_DEV_IMAGES="true"
+FORCE_PRODUCTION="false"
+
+# === PROJECT CONTEXT ===
+CONTEXT_DIR_NAME=".nyarlathotia/vibe"
+CONFIG_DIR_NAME=".nyarlathotia/vibe"
+
+
+# === AUTHENTICATION ===
+AUTH_METHOD="api_key"
+API_KEY_ENV="MISTRAL_API_KEY"
+
+# Your Mistral API key (will be prompted on first run if not set)
+# Get your key at: https://console.mistral.ai/api-keys
+# Uncomment and set your key, or let nyia-vibe prompt you on first run
+#MISTRAL_API_KEY=""
+

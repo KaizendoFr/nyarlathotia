@@ -1108,6 +1108,7 @@ get_prompt_filename() {
         gemini) echo "GEMINI.md" ;;
         codex) echo "AGENTS.md" ;;
         opencode) echo "OPENCODE.md" ;;
+        vibe) echo "VIBE.md" ;;
         *) echo "$(echo "$assistant_cli" | tr '[:lower:]' '[:upper:]').md" ;;
     esac
 }
@@ -1590,6 +1591,30 @@ check_credentials() {
                 print_verbose "No OPENAI_API_KEY or auth.json found"
                 return 1
             fi
+            ;;
+        vibe)
+            # Vibe requires MISTRAL_API_KEY
+            # Check 1: Environment variable (takes priority)
+            if [[ -n "${MISTRAL_API_KEY}" ]]; then
+                print_verbose "Found MISTRAL_API_KEY in environment"
+                return 0
+            fi
+
+            # Check 2: Config file fallback
+            local vibe_config_file
+            vibe_config_file="$(dirname "$cfg_dir")/config/vibe.conf"
+            if [[ -f "$vibe_config_file" ]]; then
+                local key_from_config
+                key_from_config=$(grep '^MISTRAL_API_KEY=' "$vibe_config_file" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs)
+                if [[ -n "$key_from_config" ]]; then
+                    export MISTRAL_API_KEY="$key_from_config"
+                    print_verbose "Found MISTRAL_API_KEY in config file"
+                    return 0
+                fi
+            fi
+
+            print_verbose "No MISTRAL_API_KEY found in environment or config"
+            return 1
             ;;
         *)
             # Fallback: use generic logic for unknown assistants
@@ -2507,24 +2532,51 @@ run_assistant() {
 
     # Ensure credentials exist before launching container (skip for shell mode)
     if [[ "$shell_mode" != "true" ]] && ! check_credentials "$assistant_cli" "$global_config_dir" "$config_dir_name" "$API_KEY_ENV"; then
-        # Assistant-specific error messages
-        case "$assistant_cli" in
-            gemini)
-                print_warning "Gemini authentication required. Choose one method:"
-                print_warning "1. Run 'nyia-gemini --shell' for interactive OAuth authentication"
-                print_warning "2. Set GEMINI_API_KEY environment variable"
-                print_warning "3. For Vertex AI: Set GOOGLE_CLOUD_PROJECT + GOOGLE_APPLICATION_CREDENTIALS"
-                ;;
-            codex)
-                print_warning "No credentials found for $assistant_name"
-                print_warning "Set OPENAI_API_KEY or run 'nyia-$assistant_name --login' to authenticate"
-                ;;
-            *)
-                print_warning "No credentials found for $assistant_name"
-                print_warning "Run 'nyia-$assistant_name --login' to authenticate${API_KEY_ENV:+ or set $API_KEY_ENV}"
-                ;;
-        esac
-        return 1
+        # Vibe: offer interactive prompt to enter API key
+        if [[ "$assistant_cli" == "vibe" ]]; then
+            print_info "No Mistral API key found."
+            print_info "Get your key at: https://console.mistral.ai/api-keys"
+            echo ""
+            read -r -p "Enter your Mistral API key (or press Enter to cancel): " vibe_api_key
+            if [[ -n "$vibe_api_key" ]]; then
+                # Save to config file
+                local vibe_config_file="$global_config_dir/../config/vibe.conf"
+                if [[ -f "$vibe_config_file" ]]; then
+                    # Append to existing config
+                    echo "" >> "$vibe_config_file"
+                    echo "# Added by nyia-vibe on $(date +%Y-%m-%d)" >> "$vibe_config_file"
+                    echo "MISTRAL_API_KEY=\"$vibe_api_key\"" >> "$vibe_config_file"
+                else
+                    # Create minimal config
+                    echo "MISTRAL_API_KEY=\"$vibe_api_key\"" > "$vibe_config_file"
+                fi
+                export MISTRAL_API_KEY="$vibe_api_key"
+                print_success "API key saved to config file"
+                # Continue execution - don't return 1
+            else
+                print_warning "No API key provided. Cannot continue."
+                return 1
+            fi
+        else
+            # Other assistants: show error message and exit
+            case "$assistant_cli" in
+                gemini)
+                    print_warning "Gemini authentication required. Choose one method:"
+                    print_warning "1. Run 'nyia-gemini --shell' for interactive OAuth authentication"
+                    print_warning "2. Set GEMINI_API_KEY environment variable"
+                    print_warning "3. For Vertex AI: Set GOOGLE_CLOUD_PROJECT + GOOGLE_APPLICATION_CREDENTIALS"
+                    ;;
+                codex)
+                    print_warning "No credentials found for $assistant_name"
+                    print_warning "Set OPENAI_API_KEY or run 'nyia-$assistant_name --login' to authenticate"
+                    ;;
+                *)
+                    print_warning "No credentials found for $assistant_name"
+                    print_warning "Run 'nyia-$assistant_name --login' to authenticate${API_KEY_ENV:+ or set $API_KEY_ENV}"
+                    ;;
+            esac
+            return 1
+        fi
     fi
     
 

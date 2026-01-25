@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/instal
 nyia list                    # Show available assistants
 ```
 
-Available options: `claude`, `gemini`, `codex`, `opencode`
+Available options: `claude`, `gemini`, `codex`, `opencode`, `vibe`
 
 ## Setup Authentication
 
@@ -32,6 +32,12 @@ nyia-gemini --login          # OAuth setup
 **Codex:**
 ```bash
 nyia-codex --setup           # API key setup
+```
+
+**Vibe (Mistral AI):**
+```bash
+export MISTRAL_API_KEY="your-api-key"  # Get key from console.mistral.ai
+nyia-vibe --status                      # Verify setup
 ```
 
 ## Start Coding
