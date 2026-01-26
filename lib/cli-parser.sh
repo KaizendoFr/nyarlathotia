@@ -44,9 +44,9 @@ export WORK_BRANCH=""
 export CREATE_BRANCH="false"
 export BUILD_CUSTOM_IMAGE=""
 
-# RAG control flags (Plan 66 - Opt-in)
+# RAG control flags (Plan 66 - Opt-in, Plan 88 - Config-based model)
 export ENABLE_RAG="false"
-export RAG_MODEL="nomic-embed-text"
+# NYIA_RAG_MODEL comes from config file, not hardcoded here
 
 # Command and arguments
 export COMMAND=""
@@ -97,16 +97,15 @@ get_assistant_arg_desc() {
         "--set-api-key") echo "Helper to set OpenAI API key for team plan users" ;;
         "--disable-exclusions") echo "Disable mount exclusions for this session" ;;
         "--prompt,-p") echo "Explicit user prompt (required for non-interactive mode)" ;;
-        "--rag") echo "Enable RAG codebase search (requires Ollama)" ;;
+        "--rag") echo "Enable RAG codebase search (requires Ollama + NYIA_RAG_MODEL in config)" ;;
         "--rag-verbose") echo "Enable verbose debug logging for RAG indexing" ;;
-        "--rag-model") echo "Override embedding model (default: nomic-embed-text)" ;;
         *) echo "" ;;
     esac
 }
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose --rag-model"
+    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -296,9 +295,8 @@ Configuration:
   --set-api-key           # Helper to set API key
 
 RAG (Codebase Search):
-  --rag                    # Enable RAG codebase search (requires Ollama)
+  --rag                    # Enable RAG codebase search (requires Ollama + NYIA_RAG_MODEL config)
   --rag-verbose            # Enable verbose debug logging for RAG indexing
-  --rag-model <name>       # Override embedding model (default: nomic-embed-text)
 EOF
 
 
@@ -527,15 +525,6 @@ parse_assistant_args() {
             --rag)
                 export ENABLE_RAG="true"
                 shift
-                ;;
-            --rag-model)
-                if [[ -n "$2" ]]; then
-                    export RAG_MODEL="$2"
-                    shift 2
-                else
-                    echo "Error: --rag-model requires model name" >&2
-                    exit 1
-                fi
                 ;;
             *)
                 # Strict validation: reject unknown options
@@ -809,7 +798,7 @@ debug_args() {
         echo "ASSISTANT_NAME: $ASSISTANT_NAME" >&2
         echo "USER_PROMPT: $USER_PROMPT" >&2
         echo "ENABLE_RAG: $ENABLE_RAG" >&2
-        echo "RAG_MODEL: $RAG_MODEL" >&2
+        echo "NYIA_RAG_MODEL: ${NYIA_RAG_MODEL:-<from config>}" >&2
         echo "REMAINING_ARGS: ${REMAINING_ARGS[*]}" >&2
         echo "======================" >&2
     fi

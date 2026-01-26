@@ -24,3 +24,10 @@ CONFIG_DIR_NAME=".nyarlathotia/claude"
 # === AUTHENTICATION ===
 AUTH_METHOD="token_setup"  # claude setup-token (new method)
 API_KEY_ENV=""             # No API key needed for Claude
+
+# === RAG SETTINGS ===
+# Embedding model for codebase search (requires Ollama on host)
+# Options: nomic-embed-text (768d, fast), mxbai-embed-large (1024d, accurate)
+# To use: nyia-claude --rag
+# Install model: ollama pull nomic-embed-text
+NYIA_RAG_MODEL="nomic-embed-text"

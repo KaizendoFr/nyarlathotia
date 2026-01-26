@@ -54,3 +54,10 @@ OLLAMA_AUTO_SETUP="true"
 # === NETWORK CONFIGURATION ===
 DOCKER_NETWORK_MODE="host"
 
+# === RAG SETTINGS ===
+# Embedding model for codebase search (requires Ollama on host)
+# Options: nomic-embed-text (768d, fast), mxbai-embed-large (1024d, accurate)
+# To use: nyia-opencode --rag
+# Install model: ollama pull nomic-embed-text
+NYIA_RAG_MODEL="nomic-embed-text"
+

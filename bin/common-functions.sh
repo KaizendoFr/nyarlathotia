@@ -1839,8 +1839,8 @@ run_docker_container() {
     if [[ -n "${ENABLE_RAG:-}" ]]; then
         docker_env_args+=(-e ENABLE_RAG="${ENABLE_RAG}")
     fi
-    if [[ -n "${RAG_MODEL:-}" ]]; then
-        docker_env_args+=(-e RAG_MODEL="${RAG_MODEL}")
+    if [[ -n "${NYIA_RAG_MODEL:-}" ]]; then
+        docker_env_args+=(-e NYIA_RAG_MODEL="${NYIA_RAG_MODEL}")
     fi
 
 

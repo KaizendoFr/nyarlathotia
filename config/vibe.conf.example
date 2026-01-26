@@ -29,3 +29,10 @@ API_KEY_ENV="MISTRAL_API_KEY"
 # Uncomment and set your key, or let nyia-vibe prompt you on first run
 #MISTRAL_API_KEY=""
 
+# === RAG SETTINGS ===
+# Embedding model for codebase search (requires Ollama on host)
+# Options: nomic-embed-text (768d, fast), mxbai-embed-large (1024d, accurate)
+# To use: nyia-vibe --rag
+# Install model: ollama pull nomic-embed-text
+NYIA_RAG_MODEL="nomic-embed-text"
+
