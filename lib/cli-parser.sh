@@ -748,8 +748,8 @@ validate_args() {
         echo "Error: Cannot use both --flavor and --image flags together" >&2
         echo "" >&2
         echo "Choose one approach:" >&2
-        echo "  --flavor=node           # Use flavor system" >&2
-        echo "  --image=custom:tag      # Use specific image" >&2
+        echo "  --flavor node           # Use flavor system" >&2
+        echo "  --image custom:tag      # Use specific image" >&2
         exit 1
     fi
 }

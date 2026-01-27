@@ -760,25 +760,25 @@ show_flavor_error() {
     echo "Available options:" >&2
     echo "  1. Use a different flavor: nyia-$assistant --flavors-list" >&2
     echo "  2. Use default image: nyia-$assistant (without --flavor)" >&2
-    echo "  3. Use custom image: nyia-$assistant --image=your-image:tag" >&2
+    echo "  3. Use custom image: nyia-$assistant --image your-image:tag" >&2
     echo "" >&2
     
     # Suggest similar flavors based on common typos
     case "$flavor" in
-        nodejs|"node.js") 
-            echo "💡 Did you mean: --flavor=node" >&2
+        nodejs|"node.js")
+            echo "💡 Did you mean: --flavor node" >&2
             ;;
         python3)
-            echo "💡 Did you mean: --flavor=python or --flavor=python311" >&2
+            echo "💡 Did you mean: --flavor python or --flavor python311" >&2
             ;;
         nextjs*|next.js)
-            echo "💡 Did you mean: --flavor=nextjs" >&2
+            echo "💡 Did you mean: --flavor nextjs" >&2
             ;;
         typescript|ts)
-            echo "💡 Try: --flavor=node (includes TypeScript support)" >&2
+            echo "💡 Try: --flavor node (includes TypeScript support)" >&2
             ;;
         golang)
-            echo "💡 Did you mean: --flavor=go" >&2
+            echo "💡 Did you mean: --flavor go" >&2
             ;;
     esac
     echo "" >&2
