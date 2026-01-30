@@ -703,6 +703,14 @@ set_installed_version() {
 }
 
 # === BRANCH DETECTION & DEV IMAGE SUPPORT ===
+
+# Check if repository has at least one commit
+# Returns 0 if commits exist, 1 if empty repo (unborn branch)
+has_commits() {
+    local project_path="${1:-$(pwd)}"
+    git -C "$project_path" rev-parse HEAD >/dev/null 2>&1
+}
+
 get_current_branch() {
     local project_path="${1:-$(pwd)}"
     if git -C "$project_path" rev-parse --git-dir > /dev/null 2>&1; then
@@ -2897,6 +2905,13 @@ create_assistant_branch() {
     local create_mode="${5:-false}"  # Optional create mode for --create flag
 
     cd "$project_path" || return 1
+
+    # Check for empty repository (no commits yet)
+    if ! has_commits "$project_path"; then
+        print_error "Repository has no commits - cannot create branch"
+        print_info "Please make an initial commit first: git commit --allow-empty -m 'Initial commit'"
+        return 1
+    fi
 
     # If base_branch is empty, use current branch
     if [[ -z "$base_branch" ]]; then
