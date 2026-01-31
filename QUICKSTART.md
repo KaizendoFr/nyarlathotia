@@ -79,7 +79,7 @@ See [docs/BRANCH_MANAGEMENT.md](docs/BRANCH_MANAGEMENT.md) for detailed workflow
 # Custom image overlays
 mkdir -p ~/.config/nyarlathotia/claude/overlay
 cat > ~/.config/nyarlathotia/claude/overlay/Dockerfile << 'EOF'
-FROM ghcr.io/nyarlathotia/claude:latest
+FROM ghcr.io/kaizendofr/nyarlathotia-claude:latest
 RUN apt-get update && apt-get install -y python3-dev build-essential
 EOF
 
