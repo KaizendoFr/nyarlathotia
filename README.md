@@ -1,6 +1,6 @@
 # NyarlathotIA Multi-Assistant Infrastructure
 
-It’s a jail for AI development tools. Supporting the CLIs of Claude, Gemini, Codex, and OpenCode.
+Containerized environment for AI development assistants. Supporting Claude, Gemini, Codex, OpenCode, and Vibe.
 
 ## 🚀 Quick Start
 
@@ -8,43 +8,53 @@ It’s a jail for AI development tools. Supporting the CLIs of Claude, Gemini, C
 # Install
 curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install.sh | bash
 
-# Setup
+# Setup (choose your assistant)
 nyia-claude --login
 
 # Use in interactive mode
 nyia-claude
 ```
 
-**→ [Complete Quick Start Guide](QUICK-START.md)** ← *2 minute setup*
+**→ [Complete Quick Start Guide](QUICKSTART.md)** ← *2 minute setup*
+
+## Prerequisites
+
+- **Docker**: Required for running assistants in isolated containers
+- **Git**: For branch and context management
+- **API Key**: From your chosen AI provider (Anthropic, Google, OpenAI, etc.)
 
 ## Supported Assistants
 
-| Assistant | Strength | Setup |
-|-----------|----------|--------|
-| **Claude** | Advanced reasoning & coding | `nyia-claude` |
-| **Gemini** | Multimodal AI (text, images) | `nyia-gemini` |
-| **Codex** | Code generation specialist | `nyia-codex` |
-| **OpenCode** | Self-hosted intelligence | `nyia-opencode` |
+| Assistant | Description | Command |
+|-----------|-------------|---------|
+| **Claude** | Anthropic's advanced reasoning & coding assistant | `nyia-claude` |
+| **Gemini** | Google's multimodal AI (text, images, code) | `nyia-gemini` |
+| **Codex** | OpenAI's code-focused assistant | `nyia-codex` |
+| **OpenCode** | Open-source local AI assistant | `nyia-opencode` |
+| **Vibe** | Lightweight AI for quick tasks | `nyia-vibe` |
 
 ## Key Features
 
-- **Docker Integration**: Isolated environments
-- **Exclusion list**: Directories and files that you don’t want to share with the AI
-- **Git Awareness**: Automatic branch and context management, manual control is possible
+- **Docker Isolation**: Each assistant runs in its own secure container
+- **Exclusion Lists**: Control which files/directories AI can access
+- **Git Awareness**: Automatic branch and context management
 - **Multi-Project**: Work across different codebases seamlessly
+- **Flavors**: Pre-configured environments (Python, Node, PHP, React, etc.)
 
 ## Get Help
 
 ```bash
-nyia list                    # Available assistants
-nyia-codex --help           # Detailed usage
-nyia-codex --status         # Configuration check
+nyia list                    # List available assistants
+nyia-claude --help           # Detailed usage
+nyia-claude --status         # Check configuration
 ```
 
 ## Links
 
-- **[Quick Start Guide](QUICK-START.md)** - Get running in 2 minutes
-- **[GitHub Issues](https://github.com/KaizendoFr/nyarlathotia/issues)** - Bug reports & requests
+- **[Quick Start Guide](QUICKSTART.md)** - Get running in 2 minutes
+- **[GitHub Issues](https://github.com/KaizendoFr/nyarlathotia/issues)** - Bug reports & feature requests
 - **[GitHub Discussions](https://github.com/KaizendoFr/nyarlathotia/discussions)** - Community help
 
 ---
+
+Licensed under AGPL-3.0. See [LICENSE](LICENSE) for details.
