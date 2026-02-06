@@ -503,3 +503,72 @@ create_volume_args() {
 create_filtered_volume_args() {
     create_volume_args "$@"
 }
+
+# === WORKSPACE MODE SUPPORT ===
+
+# Appends volume mounts for a repo WITHOUT clearing VOLUME_ARGS
+# Unlike create_volume_args(), this ADDS to existing array
+# Usage: append_repo_volume_args "$repo_path" "$container_base_path"
+append_repo_volume_args() {
+    local repo_path="$1"
+    local container_base="$2"  # e.g., /project/ws-{hash}/repos
+
+    # Use hash suffix for collision prevention (Issue #10 - same basename repos)
+    local repo_hash
+    repo_hash=$(echo -n "$repo_path" | sha256sum | cut -c1-8)
+    local repo_name
+    repo_name=$(basename "$repo_path")
+    local container_subpath="${container_base}/${repo_name}-${repo_hash}"
+
+    print_verbose "Appending repo mount: $repo_path -> $container_subpath"
+
+    # Add base mount for this repo (does NOT clear VOLUME_ARGS)
+    VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:rw")
+
+    # Apply exclusions from this repo's .nyarlathotia/exclusions.conf if it exists
+    if [[ -f "$repo_path/.nyarlathotia/exclusions.conf" ]]; then
+        print_verbose "Applying exclusions from: $repo_path/.nyarlathotia/exclusions.conf"
+
+        # Get exclusion patterns for this repo
+        local patterns
+        patterns=$(get_exclusion_patterns "$repo_path")
+
+        if [[ -n "$patterns" ]]; then
+            local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
+
+            while IFS= read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+
+                # Find matching files/directories
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$repo_path/}"
+
+                    # Skip NyarlathotIA system paths
+                    if is_nyarlathotia_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                        continue
+                    fi
+
+                    if [[ -d "$match" ]]; then
+                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                        print_verbose "Excluding directory in repo: $rel_path"
+                    else
+                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+                        print_verbose "Excluding file in repo: $rel_path"
+                    fi
+                done < <(find "$repo_path" -maxdepth "$max_depth" -name "$pattern" -print0 2>/dev/null)
+            done <<< "$patterns"
+        fi
+    fi
+
+    # Always apply built-in security exclusions to repos
+    local builtin_patterns=".env .env.* *.pem *.key credentials.json"
+    for pattern in $builtin_patterns; do
+        while IFS= read -r -d '' match; do
+            local rel_path="${match#$repo_path/}"
+            if [[ -f "$match" ]]; then
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding sensitive file in repo: $rel_path"
+            fi
+        done < <(find "$repo_path" -maxdepth 3 -name "$pattern" -print0 2>/dev/null)
+    done
+}

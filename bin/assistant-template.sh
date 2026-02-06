@@ -90,6 +90,22 @@ main() {
         PROJECT_PATH=$(pwd)
     fi
 
+    # Workspace mode detection (multi-repository support)
+    WORKSPACE_MODE=false
+    WORKSPACE_REPOS=()
+    if declare -f is_workspace >/dev/null 2>&1 && is_workspace "$PROJECT_PATH"; then
+        WORKSPACE_MODE=true
+        mapfile -t WORKSPACE_REPOS < <(parse_workspace_repos "$PROJECT_PATH")
+
+        if ! verify_workspace_repos "$PROJECT_PATH" "${WORKSPACE_REPOS[@]}"; then
+            print_error "Workspace verification failed"
+            exit 1
+        fi
+
+        print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories"
+    fi
+    export WORKSPACE_MODE WORKSPACE_REPOS
+
     # Auto-initialize project prompts directory (Git-style behavior)
     ensure_project_prompts_directory "$PROJECT_PATH"
 
