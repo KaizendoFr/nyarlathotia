@@ -278,12 +278,6 @@ Operations:
   --work-branch <name>     # Reuse existing work branch
   --base-branch <name>     # Specify Git base branch
 
-Workspace Mode (Multi-Repository):
-  Create .nyarlathotia/workspace.conf with repo paths (one per line)
-  Workspace is auto-detected; repos mounted at /project/{hash}/repos/
-  Same branch created on all workspace repos for coordinated work
-  RAG disabled in workspace mode (multi-repo indexing not yet supported)
-
 Power User:
   --build-custom-image     # Build custom image with overlays
 EOF

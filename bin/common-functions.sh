@@ -17,10 +17,6 @@ _exclusions_lib="$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"
 if [[ -f "$_exclusions_lib" ]]; then
     source "$_exclusions_lib"
 fi
-_workspace_lib="$HOME/.local/lib/nyarlathotia/workspace.sh"
-if [[ -f "$_workspace_lib" ]]; then
-    source "$_workspace_lib"
-fi
 # Runtime doesn't need mount-exclusions.conf or shared.sh - those are dev features
 
 # Development override (removed in dist)
@@ -1696,13 +1692,8 @@ run_debug_shell() {
     docker_env_args+=(-e NYIA_ENABLE_PROMPT_LAYERING="${NYIA_ENABLE_PROMPT_LAYERING:-true}")
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
     docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
-
-    # Pass workspace mode to container (for RAG disable, exclusions status)
-    if [[ "$WORKSPACE_MODE" == "true" ]]; then
-        docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
-        docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
-    fi
-
+    
+    
     # Create environment file for Docker
     local env_file=$(create_docker_env_file "$project_path" "$assistant_cli")
     docker_env_args+=("--env-file" "$env_file")
@@ -1716,29 +1707,21 @@ run_debug_shell() {
     }
     trap cleanup_env_file EXIT INT TERM QUIT  # Handle more signals
     
-    # Get volume arguments (workspace mode or standard exclusions)
-    if declare -f get_workspace_volume_args >/dev/null 2>&1; then
-        get_workspace_volume_args "$project_path" "$container_path"
-        if [[ "$WORKSPACE_MODE" == "true" ]]; then
-            print_verbose "Using workspace mode volume mounting"
-        else
-            print_verbose "Using mount exclusions system"
-        fi
+    # Get volume arguments (with or without exclusions)
+    if declare -f create_volume_args >/dev/null 2>&1; then
+        create_volume_args "$project_path" "$container_path"
+        print_verbose "Using mount exclusions system"
         print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
         if [[ "$VERBOSE" == "true" ]]; then
             for arg in "${VOLUME_ARGS[@]}"; do
                 print_verbose "  Volume arg: $arg"
             done
         fi
-    elif declare -f create_volume_args >/dev/null 2>&1; then
-        create_volume_args "$project_path" "$container_path"
-        print_verbose "Using mount exclusions system (legacy path)"
-        print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
     else
         VOLUME_ARGS=("-v" "$project_path:$container_path:rw")
         print_verbose "Using direct mount (exclusions not available)"
     fi
-
+    
     # Try to pull image if using registry
     if [[ "$full_image_name" == ghcr.io/* ]]; then
         print_status "Pulling image from registry: $full_image_name"
@@ -1868,11 +1851,6 @@ run_docker_container() {
         docker_env_args+=(-e NYIA_RAG_MODEL="${NYIA_RAG_MODEL}")
     fi
 
-    # Pass workspace mode to container (for RAG disable, exclusions status)
-    if [[ "$WORKSPACE_MODE" == "true" ]]; then
-        docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
-        docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
-    fi
 
     # Create environment file for Docker
     local env_file=$(create_docker_env_file "$project_path" "$assistant_cli")
@@ -1887,29 +1865,21 @@ run_docker_container() {
     }
     trap cleanup_env_file EXIT INT TERM QUIT  # Handle more signals
     
-    # Get volume arguments (workspace mode or standard exclusions)
-    if declare -f get_workspace_volume_args >/dev/null 2>&1; then
-        get_workspace_volume_args "$project_path" "$container_path"
-        if [[ "$WORKSPACE_MODE" == "true" ]]; then
-            print_verbose "Using workspace mode volume mounting"
-        else
-            print_verbose "Using mount exclusions system"
-        fi
+    # Get volume arguments (with or without exclusions)
+    if declare -f create_volume_args >/dev/null 2>&1; then
+        create_volume_args "$project_path" "$container_path"
+        print_verbose "Using mount exclusions system"
         print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
         if [[ "$VERBOSE" == "true" ]]; then
             for arg in "${VOLUME_ARGS[@]}"; do
                 print_verbose "  Volume arg: $arg"
             done
         fi
-    elif declare -f create_volume_args >/dev/null 2>&1; then
-        create_volume_args "$project_path" "$container_path"
-        print_verbose "Using mount exclusions system (legacy path)"
-        print_verbose "VOLUME_ARGS has ${#VOLUME_ARGS[@]} elements"
     else
         VOLUME_ARGS=("-v" "$project_path:$container_path:rw")
         print_verbose "Using direct mount (exclusions not available)"
     fi
-
+    
     print_verbose "Starting Docker container"
     print_verbose "Docker env args: ${docker_env_args[@]}"
     
@@ -2687,25 +2657,6 @@ run_assistant() {
 
     # Handle branch creation/switching before running container
     if [[ "$shell_mode" != "true" ]]; then
-        # Capture original branches BEFORE any branch operations (for rollback in workspace mode)
-        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
-            capture_original_branches "$project_path"
-
-            # Check if the target work branch exists BEFORE create_assistant_branch
-            # This tells us if we're creating a new branch or switching to existing
-            local target_branch="${work_branch:-}"
-            if [[ -z "$target_branch" ]]; then
-                # Auto-generated branch will be new
-                export MAIN_BRANCH_PRE_EXISTED=false
-            elif git -C "$project_path" branch --list "$target_branch" 2>/dev/null | grep -q .; then
-                # Explicit branch exists - we'll switch to it
-                export MAIN_BRANCH_PRE_EXISTED=true
-            else
-                # Explicit branch doesn't exist - we'll create it
-                export MAIN_BRANCH_PRE_EXISTED=false
-            fi
-        fi
-
         # Create or switch to appropriate branch (skip for shell mode)
         # Pass CREATE_BRANCH (5th param) for --create flag support
         if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
@@ -2715,16 +2666,8 @@ run_assistant() {
         # Capture the current branch after branch creation/switching for container
         local current_work_branch=$(get_current_branch "$project_path")
         export NYIA_WORK_BRANCH="$current_work_branch"
-
-        # Sync branch to workspace repos (if in workspace mode) - Plan 103
-        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
-            if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
-                print_error "Failed to sync branches across workspace repositories"
-                exit 1
-            fi
-        fi
     fi
-
+    
     if [[ "$shell_mode" == "true" ]]; then
         # Shell mode - debug bash shell (bypass git-entrypoint)
         print_status "Starting debug shell..."
@@ -2999,210 +2942,6 @@ create_assistant_branch() {
         print_success "Created and switched to branch: $timestamped_branch"
     fi
     
-    return 0
-}
-
-# === WORKSPACE BRANCH SYNCHRONIZATION (Plan 103) ===
-
-# Captures current branch for main project and all workspace repos
-# Sets global associative array: ORIGINAL_BRANCHES[repo_path]=branch_name
-# Arguments:
-#   $1 - main_project_path
-# Globals Read:
-#   WORKSPACE_REPOS - array of workspace repo paths
-# Globals Set:
-#   ORIGINAL_BRANCHES - associative array (repo_path → branch_name)
-# Returns:
-#   0 - always (capture doesn't fail)
-capture_original_branches() {
-    local main_project="$1"
-
-    # Declare global associative array
-    declare -gA ORIGINAL_BRANCHES
-    ORIGINAL_BRANCHES=()
-
-    # Capture main project
-    ORIGINAL_BRANCHES["$main_project"]=$(get_current_branch "$main_project")
-    print_verbose "Captured original branch for main: ${ORIGINAL_BRANCHES[$main_project]}"
-
-    # Capture each workspace repo
-    for repo in "${WORKSPACE_REPOS[@]}"; do
-        ORIGINAL_BRANCHES["$repo"]=$(get_current_branch "$repo")
-        print_verbose "Captured original branch for $repo: ${ORIGINAL_BRANCHES[$repo]}"
-    done
-}
-
-# Rolls back all repos to their original branches and deletes work branch
-# Arguments:
-#   $1 - work_branch: the branch to delete
-# Globals Read:
-#   ORIGINAL_BRANCHES - associative array (repo_path → original_branch)
-#   REPOS_WITH_NEW_BRANCH - array of repos where we created the branch
-# Returns:
-#   0 - rollback succeeded (or best effort)
-#   1 - rollback had errors (but still attempted all)
-rollback_all_branches() {
-    local work_branch="$1"
-    local rollback_errors=0
-    local current_dir=$(pwd)
-
-    print_warning "Rolling back branch '$work_branch' from all repositories..."
-
-    # Rollback in reverse order (last created first)
-    for ((i=${#REPOS_WITH_NEW_BRANCH[@]}-1; i>=0; i--)); do
-        local repo="${REPOS_WITH_NEW_BRANCH[i]}"
-        local original="${ORIGINAL_BRANCHES[$repo]}"
-
-        print_verbose "Rolling back $repo to $original"
-
-        if ! cd "$repo" 2>/dev/null; then
-            print_warning "Cannot cd to $repo for rollback"
-            ((rollback_errors++))
-            continue
-        fi
-
-        # Switch back to original branch
-        if ! git checkout "$original" 2>/dev/null; then
-            print_warning "Cannot checkout $original in $repo"
-            ((rollback_errors++))
-        fi
-
-        # Only delete the branch if WE created it (not if it already existed)
-        if [[ "${BRANCH_WAS_CREATED[$repo]}" == "true" ]]; then
-            if git branch --list "$work_branch" | grep -q .; then
-                if ! git branch -D "$work_branch" 2>/dev/null; then
-                    print_warning "Cannot delete branch $work_branch in $repo"
-                    ((rollback_errors++))
-                else
-                    print_verbose "Deleted branch $work_branch from $repo"
-                fi
-            fi
-        else
-            print_verbose "Keeping existing branch $work_branch in $repo (not created by us)"
-        fi
-    done
-
-    # Return to original directory
-    cd "$current_dir"
-
-    if [[ $rollback_errors -gt 0 ]]; then
-        print_warning "Rollback completed with $rollback_errors errors"
-        return 1
-    fi
-
-    print_verbose "Rollback completed successfully"
-    return 0
-}
-
-# Synchronizes work branch across all workspace repositories
-# If any repo fails, rolls back ALL repos (including main project) to original state
-# Arguments:
-#   $1 - main_project: path to main project
-#   $2 - work_branch: the branch name to sync
-#   $3 - create_mode: "true" to create if missing (default), "false" for switch-only
-# Globals Read:
-#   WORKSPACE_REPOS - array of workspace repo paths
-# Returns:
-#   0 - Success (all repos on same branch)
-#   1 - Failure (all repos rolled back to original state)
-sync_workspace_branches() {
-    local main_project="$1"
-    local work_branch="$2"
-    local create_mode="${3:-true}"
-    local current_dir=$(pwd)
-
-    # Early exit if no workspace repos
-    if [[ ${#WORKSPACE_REPOS[@]} -eq 0 ]]; then
-        print_verbose "No workspace repos to sync"
-        return 0
-    fi
-
-    print_verbose "Syncing branch '$work_branch' to ${#WORKSPACE_REPOS[@]} workspace repos"
-
-    # ORIGINAL_BRANCHES should already be set by run_assistant() before create_assistant_branch()
-    # This ensures we have the true original branches, not the work branch
-
-    # Step 1: Track repos where we successfully create/switch branch
-    declare -ga REPOS_WITH_NEW_BRANCH
-    REPOS_WITH_NEW_BRANCH=()
-
-    # Track which repos had branch CREATED vs just SWITCHED
-    # Only delete branches we created, not existing ones!
-    declare -gA BRANCH_WAS_CREATED
-    BRANCH_WAS_CREATED=()
-
-    # Main project already has the branch (created by create_assistant_branch)
-    # Use MAIN_BRANCH_PRE_EXISTED flag set by run_assistant before create_assistant_branch
-    REPOS_WITH_NEW_BRANCH+=("$main_project")
-    if [[ "${MAIN_BRANCH_PRE_EXISTED:-false}" == "true" ]]; then
-        BRANCH_WAS_CREATED["$main_project"]=false  # Branch existed, don't delete
-        print_verbose "Main project branch existed before, won't delete on rollback"
-    else
-        BRANCH_WAS_CREATED["$main_project"]=true   # We created it, safe to delete
-        print_verbose "Main project branch was created, will delete on rollback"
-    fi
-
-    # Step 3: Create/switch branch on each workspace repo
-    for repo in "${WORKSPACE_REPOS[@]}"; do
-        print_verbose "Creating branch on workspace repo: $repo"
-
-        if ! cd "$repo" 2>/dev/null; then
-            print_error "Cannot access workspace repo: $repo"
-            rollback_all_branches "$work_branch"
-            cd "$current_dir"
-            return 1
-        fi
-
-        # Check for uncommitted changes (would prevent checkout)
-        if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-            print_error "Workspace repo has uncommitted changes: $repo"
-            print_error "Please commit or stash changes before running"
-            rollback_all_branches "$work_branch"
-            cd "$current_dir"
-            return 1
-        fi
-
-        # Get base branch for this repo (its current branch)
-        local repo_base_branch=$(git branch --show-current)
-
-        # Check if branch already exists
-        if git branch --list "$work_branch" | grep -q .; then
-            # Branch exists - switch to it (DO NOT delete on rollback!)
-            if ! git checkout "$work_branch" 2>/dev/null; then
-                print_error "Cannot switch to existing branch '$work_branch' in $repo"
-                rollback_all_branches "$work_branch"
-                cd "$current_dir"
-                return 1
-            fi
-            print_verbose "Switched to existing branch '$work_branch' in $repo"
-            BRANCH_WAS_CREATED["$repo"]=false  # Existing branch, don't delete on rollback
-        else
-            # Branch doesn't exist - create it
-            if [[ "$create_mode" != "true" ]]; then
-                print_error "Branch '$work_branch' doesn't exist in $repo and create_mode is false"
-                rollback_all_branches "$work_branch"
-                cd "$current_dir"
-                return 1
-            fi
-
-            if ! git checkout -b "$work_branch" 2>/dev/null; then
-                print_error "Cannot create branch '$work_branch' in $repo"
-                rollback_all_branches "$work_branch"
-                cd "$current_dir"
-                return 1
-            fi
-            print_verbose "Created branch '$work_branch' in $repo from $repo_base_branch"
-            BRANCH_WAS_CREATED["$repo"]=true  # We created it, safe to delete on rollback
-        fi
-
-        # Track successful sync (both created and switched)
-        REPOS_WITH_NEW_BRANCH+=("$repo")
-    done
-
-    # Return to original directory
-    cd "$current_dir"
-
-    print_status "Branch '$work_branch' synced to ${#WORKSPACE_REPOS[@]} workspace repos"
     return 0
 }
 
