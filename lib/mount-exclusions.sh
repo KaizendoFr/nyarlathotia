@@ -6,7 +6,7 @@
 
 # Fallback print functions
 if ! declare -f print_verbose >/dev/null 2>&1; then
-    print_verbose() { [[ "${VERBOSE:-false}" == "true" ]] && echo "🔍 $*"; }
+    print_verbose() { [[ "${VERBOSE:-false}" == "true" ]] && echo "🔍 $*"; return 0; }
 fi
 
 # Source shared cache utilities
@@ -364,6 +364,23 @@ is_nyarlathotia_system_path() {
     return 1  # False - not a system path
 }
 
+# Check if path is under any excluded directory
+# Usage: is_path_under_excluded_dir "rel/path/to/file" "${excluded_dirs[@]}"
+is_path_under_excluded_dir() {
+    local file_path="$1"
+    shift
+    local -a dirs=("$@")
+
+    for dir in "${dirs[@]}"; do
+        [[ -z "$dir" ]] && continue
+        # Check if file_path starts with dir/
+        if [[ "$file_path" == "$dir/"* ]]; then
+            return 0  # True - file is under this directory
+        fi
+    done
+    return 1  # False - not under any excluded directory
+}
+
 # Main function: populate volume arguments array with exclusions
 create_volume_args() {
     local project_path="$1"
@@ -406,64 +423,82 @@ create_volume_args() {
             esac
         done < "$cache_file"
         
-        # Process cached excluded files
+        # First: parse and mount excluded directories (MUST be before files!)
+        local -a excluded_dir_array=()
+        if [[ -n "$excluded_dirs_str" ]]; then
+            IFS=',' read -ra excluded_dir_array <<< "$excluded_dirs_str"
+            for rel_path in "${excluded_dir_array[@]}"; do
+                if [[ -n "$rel_path" ]]; then
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                    print_verbose "Excluding directory (cached): $rel_path"
+                fi
+            done
+        fi
+
+        # Second: process files, but skip if under excluded directory
         if [[ -n "$excluded_files_str" ]]; then
             IFS=',' read -ra cached_files <<< "$excluded_files_str"
             for rel_path in "${cached_files[@]}"; do
-                [[ -n "$rel_path" ]] && VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
+                [[ -z "$rel_path" ]] && continue
+                # Skip if file is under an excluded directory
+                if is_path_under_excluded_dir "$rel_path" "${excluded_dir_array[@]}"; then
+                    print_verbose "Skipping file (parent dir excluded): $rel_path"
+                    continue
+                fi
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
                 print_verbose "Excluding file (cached): $rel_path"
-            done
-        fi
-        
-        # Process cached excluded directories
-        if [[ -n "$excluded_dirs_str" ]]; then
-            IFS=',' read -ra cached_dirs <<< "$excluded_dirs_str"
-            for rel_path in "${cached_dirs[@]}"; do
-                [[ -n "$rel_path" ]] && VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
-                print_verbose "Excluding directory (cached): $rel_path"
             done
         fi
     else
         print_verbose "Cache invalid or missing, scanning filesystem"
         # Cache invalid or doesn't exist - scan filesystem
         local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
-        # Read patterns without shell globbing expansion
-        local patterns=$(get_exclusion_patterns "$project_path")
-        print_verbose "Exclusion patterns: $patterns"
-        while IFS=' ' read -r pattern; do
-            # Use find to search recursively
-            while IFS= read -r -d '' match; do
-                local rel_path="${match#$project_path/}"
-                
-                # Skip if this is a NyarlathotIA system file
-                if is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    print_verbose "Skipping NyarlathotIA system file: $rel_path"
-                    continue
-                fi
-                
-                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
-                print_verbose "Excluding file: $rel_path"
-            done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
-        done < <(echo "$patterns" | tr ' ' '\n')
-        
-        # Process directory patterns using find for recursive search
+
+        # First: scan and collect excluded directories (MUST be before files!)
+        local -a scanned_excluded_dirs=()
         local dir_patterns=$(get_exclusion_dirs "$project_path")
         print_verbose "Directory exclusion patterns: $dir_patterns"
         while IFS=' ' read -r pattern; do
             # Use find to search recursively
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
-                
+
                 # Skip if this is a NyarlathotIA system directory
                 if is_nyarlathotia_system_path "$rel_path" "$project_path"; then
                     print_verbose "Skipping NyarlathotIA system directory: $rel_path"
                     continue
                 fi
-                
+
+                scanned_excluded_dirs+=("$rel_path")
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
                 print_verbose "Excluding directory: $rel_path"
             done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
         done < <(echo "$dir_patterns" | tr ' ' '\n')
+
+        # Second: scan files, skip if under excluded directory
+        local patterns=$(get_exclusion_patterns "$project_path")
+        print_verbose "Exclusion patterns: $patterns"
+        while IFS=' ' read -r pattern; do
+            # Use find to search recursively
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$project_path/}"
+
+                # Skip if this is a NyarlathotIA system file
+                if is_nyarlathotia_system_path "$rel_path" "$project_path"; then
+                    print_verbose "Skipping NyarlathotIA system file: $rel_path"
+                    continue
+                fi
+
+                # Skip if file is under an excluded directory
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping file (parent dir excluded): $rel_path"
+                    continue
+                fi
+
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
+                print_verbose "Excluding file: $rel_path"
+            done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+        done < <(echo "$patterns" | tr ' ' '\n')
         
         # KISS: Write cache for next time (simple approach)
         if declare -f write_exclusions_cache >/dev/null 2>&1; then
@@ -502,4 +537,73 @@ create_volume_args() {
 # Backward compatibility wrapper
 create_filtered_volume_args() {
     create_volume_args "$@"
+}
+
+# === WORKSPACE MODE SUPPORT ===
+
+# Appends volume mounts for a repo WITHOUT clearing VOLUME_ARGS
+# Unlike create_volume_args(), this ADDS to existing array
+# Usage: append_repo_volume_args "$repo_path" "$container_base_path"
+append_repo_volume_args() {
+    local repo_path="$1"
+    local container_base="$2"  # e.g., /project/ws-{hash}/repos
+
+    # Use hash suffix for collision prevention (Issue #10 - same basename repos)
+    local repo_hash
+    repo_hash=$(echo -n "$repo_path" | sha256sum | cut -c1-8)
+    local repo_name
+    repo_name=$(basename "$repo_path")
+    local container_subpath="${container_base}/${repo_name}-${repo_hash}"
+
+    print_verbose "Appending repo mount: $repo_path -> $container_subpath"
+
+    # Add base mount for this repo (does NOT clear VOLUME_ARGS)
+    VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:rw")
+
+    # Apply exclusions from this repo's .nyarlathotia/exclusions.conf if it exists
+    if [[ -f "$repo_path/.nyarlathotia/exclusions.conf" ]]; then
+        print_verbose "Applying exclusions from: $repo_path/.nyarlathotia/exclusions.conf"
+
+        # Get exclusion patterns for this repo
+        local patterns
+        patterns=$(get_exclusion_patterns "$repo_path")
+
+        if [[ -n "$patterns" ]]; then
+            local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
+
+            while IFS= read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+
+                # Find matching files/directories
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$repo_path/}"
+
+                    # Skip NyarlathotIA system paths
+                    if is_nyarlathotia_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                        continue
+                    fi
+
+                    if [[ -d "$match" ]]; then
+                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                        print_verbose "Excluding directory in repo: $rel_path"
+                    else
+                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+                        print_verbose "Excluding file in repo: $rel_path"
+                    fi
+                done < <(find "$repo_path" -maxdepth "$max_depth" -name "$pattern" -print0 2>/dev/null)
+            done <<< "$patterns"
+        fi
+    fi
+
+    # Always apply built-in security exclusions to repos
+    local builtin_patterns=".env .env.* *.pem *.key credentials.json"
+    for pattern in $builtin_patterns; do
+        while IFS= read -r -d '' match; do
+            local rel_path="${match#$repo_path/}"
+            if [[ -f "$match" ]]; then
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding sensitive file in repo: $rel_path"
+            fi
+        done < <(find "$repo_path" -maxdepth 3 -name "$pattern" -print0 2>/dev/null)
+    done
 }
