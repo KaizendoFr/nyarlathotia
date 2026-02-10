@@ -1,12 +1,20 @@
 # NyarlathotIA Quick Start
 
-Get up and running with AI-powered development assistants in a leash in under 2 minutes.
+Get up and running with AI-powered development assistants in under 2 minutes.
 
 ## Install
 
+### Linux
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install.sh | bash
+source ~/.config/nyarlathotia/env
 ```
+
+### macOS
+```bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install-macos.sh | bash
+```
+See [macOS Setup Guide](docs/MACOS_SETUP.md) for Docker Desktop installation and troubleshooting.
 
 ## Choose Your Assistant
 
@@ -18,7 +26,9 @@ Available options: `claude`, `gemini`, `codex`, `opencode`, `vibe`
 
 ## Setup Authentication
 
-**Claude (Recommended):**
+Each assistant requires one-time authentication:
+
+**Claude:**
 ```bash
 nyia-claude --login          # Follow prompts to authenticate
 nyia-claude --status         # Verify setup
@@ -34,6 +44,11 @@ nyia-gemini --login          # OAuth setup
 nyia-codex --setup           # API key setup
 ```
 
+**OpenCode:**
+```bash
+nyia-opencode --status       # No authentication required
+```
+
 **Vibe (Mistral AI):**
 ```bash
 export MISTRAL_API_KEY="your-api-key"  # Get key from console.mistral.ai
@@ -42,15 +57,11 @@ nyia-vibe --status                      # Verify setup
 
 ## Start Coding
 
+Navigate to your project directory and start an interactive session:
+
 ```bash
-# Interactive session
-nyia-claude
-
-# Direct prompt
-nyia-claude -p "Create a Python script with tests"
-
-# Work in specific directory  
-nyia-claude --path /your/project -p "Add error handling"
+cd /your/project
+nyia-claude                  # Or nyia-gemini, nyia-codex, etc.
 ```
 
 ## Branch Management
@@ -93,6 +104,7 @@ nyia-claude --build-custom-image
 # Check Docker is running
 docker --version
 sudo systemctl start docker    # Linux
+open -a Docker                  # macOS
 ```
 
 **Authentication Problems:**
@@ -104,7 +116,7 @@ nyia-claude --login
 
 **Permission Errors:**
 ```bash
-# Fix Docker permissions (Linux)
+# Fix Docker permissions (Linux only)
 sudo usermod -aG docker $USER
 newgrp docker
 ```
@@ -114,6 +126,7 @@ newgrp docker
 - **Full Documentation**: [GitHub Repository](https://github.com/KaizendoFr/nyarlathotia)
 - **Advanced Usage**: `nyia-claude --help`
 - **Custom Overlays**: Check `~/.config/nyarlathotia/claude/overlay/`
+- **macOS Setup**: [docs/MACOS_SETUP.md](docs/MACOS_SETUP.md)
 
 ---
 
