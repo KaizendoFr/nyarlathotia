@@ -21,9 +21,14 @@ _workspace_lib="$HOME/.local/lib/nyarlathotia/workspace.sh"
 if [[ -f "$_workspace_lib" ]]; then
     source "$_workspace_lib"
 fi
-# Runtime doesn't need mount-exclusions.conf or shared.sh - those are dev features
+# Runtime doesn't need mount-exclusions.conf - that's a dev feature
 
 # Development override (removed in dist)
+
+# Load shared utility functions (runtime path)
+if [[ -f "$HOME/.local/bin/common/shared.sh" ]]; then
+    source "$HOME/.local/bin/common/shared.sh"
+fi
 
 # Load input validation functions for security
 if [[ -f "$HOME/.local/lib/nyarlathotia/input-validation.sh" ]]; then
@@ -2488,32 +2493,30 @@ select_docker_image() {
 # List available flavors for an assistant
 list_assistant_flavors() {
     local assistant_name="$1"
+    local script_dir="$(dirname "${BASH_SOURCE[0]}")"
+    local flavors_file="$script_dir/../lib/flavors.list"
 
     echo "NyarlathotIA ${assistant_name} - Available Flavors:"
     echo ""
 
-    echo "Language Development:"
-    echo "  python      - Python dev tools (pytest, black, mypy, ruff, isort, ipython)"
-    echo "  php         - Multi-version PHP 7.1-8.3 (PHPUnit, PHPStan, PHP-CS-Fixer)"
-    echo "  node        - Node.js dev tools (yarn, pnpm, typescript, biome, vitest, tsx, nodemon)"
-    echo ""
+    if [[ -f "$flavors_file" ]]; then
+        while IFS='|' read -r name desc; do
+            [[ -z "$name" ]] && continue
+            printf "  %-12s - %s\n" "$name" "$desc"
+        done < "$flavors_file"
+    else
+        # Fallback if file missing
+        echo "  python, php, node, react, cypress, expo, php-react"
+        echo ""
+        echo "  (Run from installation directory for full descriptions)"
+    fi
 
-    echo "Frontend Development:"
-    echo "  react       - React dev tools (vite, storybook, @testing-library/react + node tools)"
-    echo "  expo        - React Native with Expo (expo-cli, eas-cli for cloud builds)"
     echo ""
-
-    echo "Testing:"
-    echo "  cypress     - E2E testing with Cypress (headless Chromium, AI-assisted test workflow)"
-    echo ""
-
     echo "Usage:"
     echo "  nyia-${assistant_name} --flavor python -p \"Write pytest tests\""
     echo "  nyia-${assistant_name} --flavor react -p \"Create Storybook stories\""
-    echo "  nyia-${assistant_name} --flavor cypress -p \"Write E2E tests for login flow\""
     echo ""
-
-    echo "Note: Flavors are pulled from registry on first use. No local build required."
+    echo "Note: Flavors are pulled from registry on first use."
 }
 
 # === ASSISTANT EXECUTION ===

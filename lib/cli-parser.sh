@@ -37,6 +37,43 @@ export LIST_FLAVORS="false"
 # Mount exclusions flags (simplified)
 export DISABLE_EXCLUSIONS="false"
 
+# === FLAVOR VALIDATION ===
+# Validates flavor against lib/flavors.list
+
+validate_flavor() {
+    local flavor="$1"
+    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
+    local flavors_file="$script_dir/flavors.list"
+
+    # Empty flavor is invalid
+    if [[ -z "$flavor" ]]; then
+        echo "Error: Flavor name cannot be empty" >&2
+        return 1
+    fi
+
+    # If file doesn't exist, allow any flavor (dev mode fallback)
+    if [[ ! -f "$flavors_file" ]]; then
+        return 0
+    fi
+
+    # Check if flavor exists in list (exact match at start of line)
+    if grep -q "^${flavor}|" "$flavors_file"; then
+        return 0
+    fi
+
+    # Flavor not found - show helpful error
+    echo "Error: Unknown flavor '$flavor'" >&2
+    echo "" >&2
+    echo "Available flavors:" >&2
+    while IFS='|' read -r name desc; do
+        [[ -z "$name" ]] && continue
+        printf "  %-12s - %s\n" "$name" "$desc" >&2
+    done < "$flavors_file"
+    echo "" >&2
+    echo "For custom images, use --image instead of --flavor" >&2
+    return 1
+}
+
 # Configuration
 export PROJECT_PATH=""
 export BASE_BRANCH=""
@@ -427,15 +464,17 @@ parse_assistant_args() {
                 fi
                 ;;
             --flavor)
-                if [[ -n "$2" ]]; then
-                    export FLAVOR="$2"
-                    shift 2
-                else
+                if [[ -z "${2:-}" ]]; then
                     echo "Error: --flavor requires an argument" >&2
                     echo "Usage: --flavor <flavor-name>" >&2
-                    echo "Example: --flavor node18" >&2
+                    echo "Run --flavors-list to see available flavors" >&2
                     exit 1
                 fi
+                if ! validate_flavor "$2"; then
+                    exit 1
+                fi
+                export FLAVOR="$2"
+                shift 2
                 ;;
             --flavors-list)
                 export LIST_FLAVORS="true"
