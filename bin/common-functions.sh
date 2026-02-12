@@ -1537,13 +1537,7 @@ check_credentials() {
             # Check for Claude credentials on the host in the NyarlathotIA config directory
             # These will be mounted into the container at ~/.claude/
             if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
-                print_error "Claude is not authenticated"
-                print_info ""
-                print_info "To authenticate Claude, run:"
-                print_info "  nyia-claude --login"
-                print_info ""
-                print_info "This will open a browser for authentication."
-                print_info "After login, you can use Claude normally."
+                print_verbose "Claude credentials not found: $cfg_dir/.credentials.json"
                 return 1
             fi
 
@@ -1665,6 +1659,31 @@ check_credentials() {
             return 1
             ;;
     esac
+}
+
+# Print appropriate message when credentials are missing
+# Arguments:
+#   $1 - assistant_cli (e.g., "claude", "gemini")
+#   $2 - context: "login" or "run" (default: "run")
+print_credential_failure_message() {
+    local assistant_cli="$1"
+    local context="${2:-run}"
+
+    # Capitalize first letter for display
+    local display_name="${assistant_cli^}"
+
+    if [[ "$context" == "login" ]]; then
+        # User is already in login mode - guide them through the process
+        print_info ""
+        print_info "Starting $display_name authentication..."
+        print_info "A browser window will open for you to log in."
+    else
+        # User tried to run without credentials - tell them to login first
+        print_error "$display_name is not authenticated"
+        print_info ""
+        print_info "To authenticate, run:"
+        print_info "  nyia-$assistant_cli --login"
+    fi
 }
 
 generate_container_name() {
@@ -2074,6 +2093,11 @@ login_assistant() {
         fi
     else
         print_info "🔄 Force login requested - proceeding with re-authentication"
+    fi
+
+    # If credentials were missing (not force mode), show login start message
+    if [[ "${FORCE_LOGIN:-false}" != "true" ]]; then
+        print_credential_failure_message "$assistant_cli" "login"
     fi
 
     # Select Docker image to use
@@ -2612,8 +2636,8 @@ run_assistant() {
                     print_warning "Set OPENAI_API_KEY or run 'nyia-$assistant_name --login' to authenticate"
                     ;;
                 *)
-                    print_warning "No credentials found for $assistant_name"
-                    print_warning "Run 'nyia-$assistant_name --login' to authenticate${API_KEY_ENV:+ or set $API_KEY_ENV}"
+                    # Use helper function for consistent messaging
+                    print_credential_failure_message "$assistant_cli" "run"
                     ;;
             esac
             return 1
@@ -2792,17 +2816,7 @@ validate_work_branch() {
         print_info "Work branch names can only contain: a-z A-Z 0-9 . / _ -"
         return 1
     fi
-    
-    # Check if repository has more than one branch (security requirement)
-    local total_branches
-    total_branches=$(cd "$project_path" && git branch -a 2>/dev/null | grep -v '^\s*$' | wc -l || echo "0")
-    if [[ "$total_branches" -le 1 ]]; then
-        print_error "Cannot use work branch in single-branch repository"
-        print_info "Security policy: Work branches require multi-branch repository"
-        print_info "Create additional branches first or use default timestamped branches"
-        return 1
-    fi
-    
+
     # Get list of protected branches
     local protected_branches
     protected_branches=$(cd "$project_path" && get_protected_branches 2>/dev/null)

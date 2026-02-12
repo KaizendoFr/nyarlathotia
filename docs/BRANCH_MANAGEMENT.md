@@ -231,20 +231,6 @@ Usage: nyia-assistant --work-branch feature/my-branch --create
 
 **Solution**: Add `--work-branch <name>` before `--create`.
 
-### Single-Branch Repository
-
-```
-Cannot create work branches in single-branch repository
-Security policy: Use 'git checkout -b' manually first
-```
-
-**Solution**: Create at least one additional branch manually first:
-```bash
-git checkout -b develop
-git checkout main
-nyia-claude --work-branch feature/x --create
-```
-
 ---
 
 ## How It Works

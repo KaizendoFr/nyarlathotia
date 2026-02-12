@@ -84,6 +84,19 @@ nyia-claude --work-branch feature/my-feature
 
 See [docs/BRANCH_MANAGEMENT.md](docs/BRANCH_MANAGEMENT.md) for detailed workflows.
 
+## Built-in Skills
+
+All assistants include 4 built-in skills (following the [Agent Skills](https://agentskills.io) standard):
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| **kickoff** | `/kickoff` | Start a session - reconstructs state from `.nyarlathotia/` files |
+| **do-a-plan** | `/do-a-plan` | Create a phased execution plan with atomic steps |
+| **pair-review** | `/pair-review` | Architect-level review between agents (e.g., Claude reviews Codex's plan) |
+| **checkpoint** | `/checkpoint` | Save session state before context compaction or shutdown |
+
+Skills are invoked as slash commands within your assistant session.
+
 ## Power User Features
 
 ```bash
