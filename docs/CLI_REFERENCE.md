@@ -9,10 +9,6 @@ Complete reference for all CLI flags and their interactions.
 | `--work-branch <name>` | Branch | - | - | Reuse existing work branch |
 | `--create` | Branch | `--work-branch` | - | Create branch if missing |
 | `--base-branch <name>` | Branch | - | - | Source branch for new branch |
-| `--build` | Build | - | - | Build image from source |
-| `--dev` | Build | `--build` | - | Create branch-tagged image |
-| `--no-cache` | Build | `--build` | - | Force rebuild from scratch |
-| `--dry-run` | Build | `--build` | - | Preview build plan |
 | `--build-custom-image` | Build | - | - | Build with user overlays |
 | `--flavor <name>` | Image | - | `--image`* | Use flavor image |
 | `--image <tag>` | Image | - | `--flavor`* | Use specific image |
@@ -54,19 +50,11 @@ Control how NyarlathotIA creates and manages Git branches for your work.
 
 **See also**: [BRANCH_MANAGEMENT.md](BRANCH_MANAGEMENT.md) for detailed workflows.
 
-### Build Operations
-
-Build Docker images locally. These flags are only available in development mode.
+### Custom Image Building
 
 | Flag | Description |
 |------|-------------|
-| `--build` | Build image from source |
-| `--dev` | Create branch-tagged image (e.g., `:dev-feature-auth`) |
-| `--no-cache` | Force complete rebuild, ignore Docker cache |
-| `--dry-run` | Preview build plan without building |
 | `--build-custom-image` | Build with user overlay Dockerfiles |
-
-**See also**: [IMAGE_NAMING.md](IMAGE_NAMING.md) for image naming conventions.
 
 ### Image Selection
 
@@ -88,6 +76,7 @@ Choose which Docker image to run.
 - `react` - vite, storybook, testing-library + node tools
 - `cypress` - E2E testing with headless Chromium
 - `expo` - React Native with Expo CLI
+- `php-react` - PHP 8.2 + React fullstack
 
 **See also**: [USER_GUIDE_FLAVORS_OVERLAYS.md](USER_GUIDE_FLAVORS_OVERLAYS.md) for flavor details.
 
@@ -150,9 +139,6 @@ System-level operations.
 | If you use... | You must also use... | Reason |
 |---------------|---------------------|--------|
 | `--create` | `--work-branch` | `--create` specifies what to create |
-| `--dev` | `--build` | `--dev` is a build-time tag option |
-| `--no-cache` | `--build` | Cache only applies to builds |
-| `--dry-run` | `--build` | Previews the build |
 | `--rag-verbose` | `--rag` | Verbose mode for RAG |
 | `--rag-model` | `--rag` | Model selection for RAG |
 | `--force` | `--login` | Force applies to login |
@@ -167,17 +153,14 @@ System-level operations.
 ### Compatible Combinations
 
 ```bash
-# Build with flavor and dev tag
-nyia-claude --build --dev --flavor python
-
 # Work branch from specific base
 nyia-claude --work-branch feature/x --create --base-branch develop
 
-# Verbose build with dry-run
-nyia-claude --build --dry-run --verbose
-
 # RAG with custom model
 nyia-claude --rag --rag-model nomic-embed-text --verbose
+
+# Flavor with prompt
+nyia-claude --flavor python -p "Write tests"
 ```
 
 ---
@@ -207,21 +190,18 @@ nyia-claude --work-branch feature/auth
 # Use Python flavor
 nyia-claude --flavor python -p "Write pytest tests"
 
-# Build Python flavor locally
-nyia-claude --build --flavor python
+# Interactive mode with flavor
+nyia-claude --flavor python
 ```
 
 ### Building Custom Images
 
 ```bash
-# Build with dev tag for current branch
-nyia-claude --build --dev
-
-# Preview build without executing
-nyia-claude --build --dry-run
-
 # Build with custom overlays
 nyia-claude --build-custom-image
+
+# Then use your custom image
+nyia-claude --image nyarlathotia-claude-custom
 ```
 
 ### Codebase Search
@@ -256,14 +236,6 @@ Usage: nyia-assistant --work-branch feature/my-branch --create
 
 **Fix**: Add `--work-branch <name>` before `--create`.
 
-### `--dev requires --build`
-
-```
-Error: --dev can only be used with --build
-```
-
-**Fix**: Add `--build` to create a dev-tagged image.
-
 ### `Branch does not exist`
 
 ```
@@ -287,5 +259,4 @@ Cannot use protected branch as work branch: 'main'
 ## Related Documentation
 
 - [BRANCH_MANAGEMENT.md](BRANCH_MANAGEMENT.md) - Detailed branch workflow guide
-- [IMAGE_NAMING.md](IMAGE_NAMING.md) - Image naming conventions
 - [USER_GUIDE_FLAVORS_OVERLAYS.md](USER_GUIDE_FLAVORS_OVERLAYS.md) - Flavors and overlays guide

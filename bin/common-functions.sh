@@ -1241,10 +1241,18 @@ determine_overlay_base_image() {
 # Custom image building for end-users (power user feature)
 build_custom_image() {
     local assistant_name="$1"
-    
+
     # Always use ghcr.io as base (end-users don't build from source)
     local registry=$(get_docker_registry)
-    local base_image="${registry}/nyarlathotia-${assistant_name}:latest"
+    local base_image
+
+    # Determine base image (priority: override > flavor > default)
+    if [[ -n "${FLAVOR:-}" ]]; then
+        base_image="${registry}/nyarlathotia-${assistant_name}-${FLAVOR}:latest"
+        print_info "Using flavor '${FLAVOR}' as base"
+    else
+        base_image="${registry}/nyarlathotia-${assistant_name}:latest"
+    fi
     
     # Check for Docker
     if ! command -v docker >/dev/null 2>&1; then
@@ -1276,14 +1284,23 @@ build_custom_image() {
         print_info "  Project: $project_overlay"
         print_info ""
         print_info "Example overlay Dockerfile:"
-        print_info "  FROM $base_image"
+        print_info "  ARG BASE_IMAGE"
+        print_info "  FROM \${BASE_IMAGE}"
         print_info "  RUN apt-get update && apt-get install -y your-tools"
-        print_info "  # Add your customizations here"
+        print_info ""
+        print_info "Build options:"
+        print_info "  nyia-${assistant_name} --build-custom-image                 # Base image"
+        print_info "  nyia-${assistant_name} --build-custom-image --flavor python # Python flavor as base"
         return 1
     fi
     
-    # Build custom image
-    local custom_image_name="nyarlathotia-${assistant_name}-custom"
+    # Build custom image (include flavor in name if used)
+    local custom_image_name
+    if [[ -n "${FLAVOR:-}" ]]; then
+        custom_image_name="nyarlathotia-${assistant_name}-${FLAVOR}-custom"
+    else
+        custom_image_name="nyarlathotia-${assistant_name}-custom"
+    fi
     local build_context="$(pwd)"
     
     print_info "Building custom image: $custom_image_name"
@@ -1300,16 +1317,16 @@ build_custom_image() {
     # Apply user overlay if exists
     if [[ -f "$user_overlay" ]]; then
         print_info "Applying user overlay..."
-        # Skip the FROM line and append the rest
-        tail -n +2 "$user_overlay" >> "$temp_dockerfile"
+        # Strip ARG BASE_IMAGE and FROM lines, keep everything else
+        sed '/^ARG BASE_IMAGE/d; /^FROM/d' "$user_overlay" >> "$temp_dockerfile"
         echo "" >> "$temp_dockerfile"
     fi
     
-    # Apply project overlay if exists  
+    # Apply project overlay if exists
     if [[ -f "$project_overlay" ]]; then
         print_info "Applying project overlay..."
-        # Skip the FROM line and append the rest
-        tail -n +2 "$project_overlay" >> "$temp_dockerfile"
+        # Strip ARG BASE_IMAGE and FROM lines, keep everything else
+        sed '/^ARG BASE_IMAGE/d; /^FROM/d' "$project_overlay" >> "$temp_dockerfile"
     fi
     
     # Show what will be built

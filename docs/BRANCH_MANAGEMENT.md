@@ -278,4 +278,4 @@ When creating a new branch:
 ## Related Documentation
 
 - [CLI_REFERENCE.md](CLI_REFERENCE.md) - Complete flag reference
-- [IMAGE_NAMING.md](IMAGE_NAMING.md) - Image naming and `--dev` tags
+- [USER_GUIDE_FLAVORS_OVERLAYS.md](USER_GUIDE_FLAVORS_OVERLAYS.md) - Flavors and custom images

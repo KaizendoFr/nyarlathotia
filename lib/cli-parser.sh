@@ -797,6 +797,7 @@ validate_args() {
         echo "  --image custom:tag      # Use specific image" >&2
         exit 1
     fi
+
 }
 
 # === UTILITY FUNCTIONS ===

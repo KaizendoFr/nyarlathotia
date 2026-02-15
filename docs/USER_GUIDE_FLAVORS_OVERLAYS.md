@@ -40,6 +40,7 @@ nyia-claude --flavors-list
 | `react` | node tools + vite, create-vite, storybook, @testing-library/react |
 | `cypress` | Cypress E2E testing with headless Chromium (for AI-assisted testing) |
 | `expo` | expo-cli, eas-cli, yarn (React Native with cloud builds) |
+| `php-react` | PHP 8.2 + React + Storybook + Jest + Cypress + PHPUnit (fullstack) |
 
 ### Using a Flavor
 
@@ -73,17 +74,7 @@ Choose one of these locations:
 | `~/.config/nyarlathotia/claude/overlay/Dockerfile` | All your projects |
 | `.nyarlathotia/claude/overlay/Dockerfile` | This project only |
 
-**Option A: Start from a template**
-
-```bash
-# Create directory
-mkdir -p ~/.config/nyarlathotia/claude/overlay/
-
-# Copy a template (if available)
-# Templates are in docker/overlay-templates/ in the source distribution
-```
-
-**Option B: Write your own**
+**Create your Dockerfile:**
 
 ```bash
 mkdir -p ~/.config/nyarlathotia/claude/overlay/
@@ -120,48 +111,6 @@ nyia-claude --image nyarlathotia-claude-custom -p "your prompt"
 ```
 
 **Note:** You must use `--image` to select your custom image. Without it, the default image is used.
-
----
-
-## Part 3: Advanced - Overlay on Top of Flavor
-
-If you want a flavor's tools PLUS your own customizations, you can layer an overlay on top of a flavor.
-
-**Use case:** You want Python flavor (pytest, black, mypy) plus some additional packages.
-
-### Step 1: Create Overlay with Flavor as Base
-
-```bash
-mkdir -p ~/.config/nyarlathotia/claude/overlay/
-
-cat > ~/.config/nyarlathotia/claude/overlay/Dockerfile << 'EOF'
-# Start from Python flavor instead of base
-FROM ghcr.io/kaizendofr/nyarlathotia-claude-python:latest
-
-# Python flavor already includes: pytest, black, mypy, ruff, isort, ipython
-# Add your extra packages
-USER node
-RUN pip install --no-cache-dir \
-    pandas \
-    numpy \
-    matplotlib
-EOF
-```
-
-### Step 2: Build Manually
-
-Since `--build-custom-image` uses the base image, build manually:
-
-```bash
-docker build -t nyarlathotia-claude-custom \
-  -f ~/.config/nyarlathotia/claude/overlay/Dockerfile .
-```
-
-### Step 3: Use Your Custom Image
-
-```bash
-nyia-claude --image nyarlathotia-claude-custom -p "Analyze this data with pandas"
-```
 
 ---
 
@@ -260,9 +209,3 @@ Error: No such image: nyarlathotia-claude-custom
 | Use custom image | `nyia-claude --image nyarlathotia-claude-custom` |
 | Check available images | `nyia-claude --list-images` |
 
----
-
-## See Also
-
-- [Overlay Templates](../docker/overlay-templates/README.md) - Ready-to-use Dockerfile templates
-- [Flavor System](flavor-system.md) - Technical details about flavor naming and validation

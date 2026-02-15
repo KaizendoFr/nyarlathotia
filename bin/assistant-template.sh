@@ -191,7 +191,7 @@ main() {
     
     # Handle custom image build (end-user power feature)
     if [[ "$BUILD_CUSTOM_IMAGE" == "true" ]]; then
-        build_custom_image "$assistant_name"
+        build_custom_image "$config_assistant_name"
         exit $?
     fi
     
