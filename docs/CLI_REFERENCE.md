@@ -10,6 +10,7 @@ Complete reference for all CLI flags and their interactions.
 | `--create` | Branch | `--work-branch` | - | Create branch if missing |
 | `--base-branch <name>` | Branch | - | - | Source branch for new branch |
 | `--build-custom-image` | Build | - | - | Build with user overlays |
+| `--no-cache` | Build | `--build`* or `--build-custom-image` | - | Force rebuild without Docker cache |
 | `--flavor <name>` | Image | - | `--image`* | Use flavor image |
 | `--image <tag>` | Image | - | `--flavor`* | Use specific image |
 | `--list-images` | Image | - | - | List available images |
@@ -55,6 +56,9 @@ Control how NyarlathotIA creates and manages Git branches for your work.
 | Flag | Description |
 |------|-------------|
 | `--build-custom-image` | Build with user overlay Dockerfiles |
+| `--no-cache` | Force rebuild without Docker cache (requires `--build`* or `--build-custom-image`) |
+
+*`--build` is dev-only and not available in runtime distribution.
 
 ### Image Selection
 
@@ -139,6 +143,7 @@ System-level operations.
 | If you use... | You must also use... | Reason |
 |---------------|---------------------|--------|
 | `--create` | `--work-branch` | `--create` specifies what to create |
+| `--no-cache` | `--build`* or `--build-custom-image` | Cache bypass applies to builds |
 | `--rag-verbose` | `--rag` | Verbose mode for RAG |
 | `--rag-model` | `--rag` | Model selection for RAG |
 | `--force` | `--login` | Force applies to login |
@@ -199,6 +204,9 @@ nyia-claude --flavor python
 ```bash
 # Build with custom overlays
 nyia-claude --build-custom-image
+
+# Force rebuild without Docker cache
+nyia-claude --build-custom-image --no-cache
 
 # Then use your custom image
 nyia-claude --image nyarlathotia-claude-custom

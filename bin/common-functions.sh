@@ -1334,8 +1334,10 @@ build_custom_image() {
     cat "$temp_dockerfile" | sed 's/^/  /'
     
     # Build the image
+    local no_cache_flag=""
+    [[ "${NO_CACHE:-false}" == "true" ]] && no_cache_flag="--no-cache"
     print_info "Building image (this may take a while)..."
-    if docker build -t "$custom_image_name" -f "$temp_dockerfile" "$build_context"; then
+    if docker build $no_cache_flag -t "$custom_image_name" -f "$temp_dockerfile" "$build_context"; then
         print_success "Custom image built successfully: $custom_image_name"
         print_info ""
         print_info "To use your custom image:"

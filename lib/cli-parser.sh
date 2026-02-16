@@ -22,6 +22,7 @@ fi
 export SHOW_HELP="false"
 export SHOW_STATUS="false"
 export SHOW_VERSION="false"
+export NO_CACHE="false"
 export VERBOSE="false"
 export LOGIN_ONLY="false"
 export CHECK_REQUIREMENTS="false"  # Moved outside DEV_BUILD - needed in runtime
@@ -119,6 +120,7 @@ get_assistant_arg_desc() {
         "--image") echo "Select specific Docker image (tag or repo:tag)" ;;
         "--flavor") echo "Select assistant flavor/variant (e.g., node, python, rust)" ;;
         "--flavors-list") echo "List available flavors for this assistant" ;;
+        "--no-cache") echo "Force Docker rebuild without cache (use with --build or --build-custom-image)" ;;
         "--status") echo "Show assistant status, configs, and available overlays" ;;
         "--list-images") echo "List all available Docker images for this assistant" ;;
         "--base-branch") echo "Specify Git base branch to work from" ;;
@@ -142,7 +144,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
+    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -323,6 +325,7 @@ Workspace Mode (Multi-Repository):
 
 Power User:
   --build-custom-image     # Build custom image with overlays
+  --no-cache               # Force rebuild without cache
 EOF
 
     # Add prompt customization help
@@ -480,6 +483,10 @@ parse_assistant_args() {
                 export LIST_FLAVORS="true"
                 shift
                 ;;
+            --no-cache)
+                export NO_CACHE="true"
+                shift
+                ;;
             --status)
                 SHOW_STATUS="true"
                 shift
@@ -595,10 +602,11 @@ parse_assistant_args() {
                     echo "" >&2
                     echo "Additional options:" >&2
                     echo "  --build-custom-image Build custom image with overlays" >&2
+                    echo "  --no-cache           Force rebuild without cache (use with --build-custom-image)" >&2
                     echo "  --base-branch <name> Specify Git base branch" >&2
                     echo "  --work-branch <name> Reuse work branch" >&2
                     echo "" >&2
-                    echo "Example: nyia-claude -p 'Help me with my code'" >&2
+                    echo "Example: nyia-claude --build-custom-image --no-cache" >&2
                     
                     exit 1
                 fi
@@ -651,6 +659,7 @@ parse_args() {
     # Reset all variables to defaults
     export SHOW_HELP="false"
     export SHOW_STATUS="false"
+    export NO_CACHE="false"
     export VERBOSE="false"
     export LOGIN_ONLY="false"
     export SKIP_CHECKS="false"
@@ -708,13 +717,22 @@ validate_args() {
         # Export the normalized path
         export PROJECT_PATH
     fi
-    
-    
-    
+
+
+    # Info-only flags bypass build validation (they exit before any build runs)
+    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" ]]; then
+        return 0
+    fi
+
     # Validate build + no-cache combination
-    if [[ "$NO_CACHE" == "true" && "$BUILD_IMAGE" != "true" ]]; then
-        echo "Error: --no-cache can only be used with --build" >&2
-        exit 1
+    if [[ "$NO_CACHE" == "true" ]]; then
+        local has_build_flag=false
+        [[ "$BUILD_CUSTOM_IMAGE" == "true" ]] && has_build_flag=true
+        if [[ "$has_build_flag" == "false" ]]; then
+            local build_options="--build-custom-image"
+            echo "Error: --no-cache requires $build_options" >&2
+            exit 1
+        fi
     fi
     
     # Validate dev mode (only with build)

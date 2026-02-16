@@ -12,6 +12,7 @@ This guide explains how to use pre-built flavors and create custom overlays to e
 | React dev tools (vite, storybook) | **Flavor** | `nyia-claude --flavor react` |
 | Cypress E2E testing | **Flavor** | `nyia-claude --flavor cypress` |
 | React Native/Expo | **Flavor** | `nyia-claude --flavor expo` |
+| PHP + React fullstack | **Flavor** | `nyia-claude --flavor php-react` |
 | Something else (custom packages) | **Overlay** | Create Dockerfile, then `--build-custom-image` |
 
 **Rule of thumb:**
@@ -100,6 +101,9 @@ EOF
 
 ```bash
 nyia-claude --build-custom-image
+
+# Force rebuild without Docker cache
+nyia-claude --build-custom-image --no-cache
 ```
 
 This creates an image named `nyarlathotia-claude-custom`.
@@ -206,6 +210,7 @@ Error: No such image: nyarlathotia-claude-custom
 | Use Python flavor | `nyia-claude --flavor python` |
 | Use PHP flavor | `nyia-claude --flavor php` |
 | Build custom overlay | `nyia-claude --build-custom-image` |
+| Rebuild without cache | `nyia-claude --build-custom-image --no-cache` |
 | Use custom image | `nyia-claude --image nyarlathotia-claude-custom` |
 | Check available images | `nyia-claude --list-images` |
 

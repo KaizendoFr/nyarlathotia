@@ -187,30 +187,30 @@ main() {
         show_requirements_check "$PROJECT_PATH"
         exit $?
     fi
-    
+
+    # Handle status mode (info-only, takes priority over build)
+    if [[ "$SHOW_STATUS" == "true" ]]; then
+        show_assistant_status
+        exit 0
+    fi
+
+    # Handle list images mode (info-only, takes priority over build)
+    if [[ "$LIST_IMAGES" == "true" ]]; then
+        list_assistant_images "$BASE_IMAGE_NAME"
+        exit 0
+    fi
+
+    # Handle list flavors mode (info-only, takes priority over build)
+    if [[ "$LIST_FLAVORS" == "true" ]]; then
+        list_assistant_flavors "$config_assistant_name"
+        exit 0
+    fi
+
     
     # Handle custom image build (end-user power feature)
     if [[ "$BUILD_CUSTOM_IMAGE" == "true" ]]; then
         build_custom_image "$config_assistant_name"
         exit $?
-    fi
-    
-    # Handle status mode
-    if [[ "$SHOW_STATUS" == "true" ]]; then
-        show_assistant_status
-        exit 0
-    fi
-    
-    # Handle list images mode
-    if [[ "$LIST_IMAGES" == "true" ]]; then
-        list_assistant_images "$BASE_IMAGE_NAME"
-        exit 0
-    fi
-    
-    # Handle list flavors mode
-    if [[ "$LIST_FLAVORS" == "true" ]]; then
-        list_assistant_flavors "$config_assistant_name"
-        exit 0
     fi
 
     # Handle API key setup mode
