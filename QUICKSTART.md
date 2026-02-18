@@ -12,7 +12,7 @@ source ~/.config/nyarlathotia/env
 
 ### macOS
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/scripts/install-macos.sh | bash
 ```
 See [macOS Setup Guide](docs/MACOS_SETUP.md) for Docker Desktop installation and troubleshooting.
 

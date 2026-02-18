@@ -12,7 +12,15 @@ set -e
 INSTALL_DIR="${HOME}/.local"
 BIN_DIR="${INSTALL_DIR}/bin"
 LIB_DIR="${INSTALL_DIR}/lib/nyarlathotia"
-CONFIG_DIR="${HOME}/.config/nyarlathotia/config"
+# Platform-aware config path (must match entry points in bin/nyia-*)
+case "$(uname -s)" in
+    Darwin*)
+        CONFIG_DIR="$HOME/Library/Application Support/nyarlathotia/config"
+        ;;
+    *)
+        CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyarlathotia/config"
+        ;;
+esac
 
 echo "🔧 Installing NyarlathotIA runtime distribution..."
 
@@ -22,6 +30,7 @@ mkdir -p "$BIN_DIR" "$LIB_DIR" "$CONFIG_DIR"
 # Copy binaries
 if [[ -d bin ]]; then
     cp -r bin/* "$BIN_DIR/"
+    chmod +x "$BIN_DIR"/nyia* 2>/dev/null || true
     echo "✅ Installed commands to $BIN_DIR"
 else
     echo "❌ Error: bin directory not found"
@@ -64,18 +73,33 @@ else
     echo "⚠️  Warning: config directory not found"
 fi
 
+# Copy VERSION file for upgrade detection
+if [[ -f "VERSION" ]]; then
+    cp "VERSION" "$LIB_DIR/VERSION"
+    echo "✅ Installed version: $(cat VERSION)"
+fi
+
+# Cross-platform sed in-place (BSD sed on macOS requires '' backup arg)
+sed_inplace() {
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 # Fix paths in assistant-template.sh for installed layout
 if [[ -f "$BIN_DIR/assistant-template.sh" ]]; then
     # Fix cli-parser.sh path
-    sed -i 's|source "\$script_dir/\.\./lib/cli-parser\.sh"|source "\$HOME/.local/lib/nyarlathotia/cli-parser.sh"|' "$BIN_DIR/assistant-template.sh"
-    # Fix exclusions-commands.sh path  
-    sed -i 's|local exclusions_lib="\$script_dir/\.\./lib/exclusions-commands\.sh"|local exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/assistant-template.sh"
+    sed_inplace 's|source "\$script_dir/\.\./lib/cli-parser\.sh"|source "\$HOME/.local/lib/nyarlathotia/cli-parser.sh"|' "$BIN_DIR/assistant-template.sh"
+    # Fix exclusions-commands.sh path
+    sed_inplace 's|local exclusions_lib="\$script_dir/\.\./lib/exclusions-commands\.sh"|local exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/assistant-template.sh"
     # Fix mount-exclusions.sh path
-    sed -i 's|local mount_exclusions_lib="\$script_dir/\.\./lib/mount-exclusions\.sh"|local mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/assistant-template.sh"
-    
+    sed_inplace 's|local mount_exclusions_lib="\$script_dir/\.\./lib/mount-exclusions\.sh"|local mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/assistant-template.sh"
+
     # Also fix paths in main nyia script
-    sed -i 's|exclusions_lib="\$script_dir_real/\.\./lib/exclusions-commands\.sh"|exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/nyia"
-    sed -i 's|mount_exclusions_lib="\$script_dir_real/\.\./lib/mount-exclusions\.sh"|mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/nyia"
+    sed_inplace 's|exclusions_lib="\$script_dir_real/\.\./lib/exclusions-commands\.sh"|exclusions_lib="\$HOME/.local/lib/nyarlathotia/exclusions-commands.sh"|' "$BIN_DIR/nyia"
+    sed_inplace 's|mount_exclusions_lib="\$script_dir_real/\.\./lib/mount-exclusions\.sh"|mount_exclusions_lib="\$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"|' "$BIN_DIR/nyia"
     echo "✅ Updated paths for installed layout"
 fi
 

@@ -7,7 +7,7 @@ Quick setup guide for Apple/macOS users.
 The macOS installer handles everything automatically - Docker detection, installation guidance, and PATH configuration:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/scripts/install-macos.sh | bash
 ```
 
 The installer will:

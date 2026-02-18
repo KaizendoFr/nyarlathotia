@@ -23,6 +23,8 @@ BIN_DIR="$HOME/.local/bin"
 PUBLIC_REPO="KaizendoFr/nyarlathotia"
 TARBALL_NAME="nyarlathotia-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
+# Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
+RELEASE_TAG="v0.1.0-alpha.32"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -305,8 +307,13 @@ install_nyarlathotia() {
     echo ""
     print_info "Installing NyarlathotIA..."
 
-    # Download latest release tarball (aligned with existing release flow)
-    local tarball_url="https://github.com/$PUBLIC_REPO/releases/latest/download/$TARBALL_NAME"
+    # Build download URL — RELEASE_TAG is patched at build time by preprocess-runtime.sh
+    local tarball_url
+    if [[ "$RELEASE_TAG" == "latest" ]]; then
+        tarball_url="https://github.com/$PUBLIC_REPO/releases/latest/download/$TARBALL_NAME"
+    else
+        tarball_url="https://github.com/$PUBLIC_REPO/releases/download/$RELEASE_TAG/$TARBALL_NAME"
+    fi
 
     print_info "Downloading from: $tarball_url"
 
@@ -430,8 +437,9 @@ main() {
     echo "Checking for Docker..."
     echo ""
 
-    check_docker
-    local docker_status=$?
+    # Capture exit code without triggering set -e
+    local docker_status=0
+    check_docker || docker_status=$?
 
     case $docker_status in
         0)
