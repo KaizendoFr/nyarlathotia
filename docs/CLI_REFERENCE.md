@@ -6,8 +6,9 @@ Complete reference for all CLI flags and their interactions.
 
 | Flag | Category | Requires | Conflicts | Description |
 |------|----------|----------|-----------|-------------|
-| `--work-branch <name>` | Branch | - | - | Reuse existing work branch |
-| `--create` | Branch | `--work-branch` | - | Create branch if missing |
+| `-H`, `--current-branch` | Branch | - | `--work-branch`, `--create`, workspace | Work on current branch (skip branch creation) |
+| `-w`, `--work-branch <name>` | Branch | - | `--current-branch` | Reuse existing work branch |
+| `--create` | Branch | `--work-branch` | `--current-branch` | Create branch if missing |
 | `--base-branch <name>` | Branch | - | - | Source branch for new branch |
 | `--build-custom-image` | Build | - | - | Build with user overlays |
 | `--no-cache` | Build | `--build`* or `--build-custom-image` | - | Force rebuild without Docker cache |
@@ -41,13 +42,16 @@ Complete reference for all CLI flags and their interactions.
 
 Control how NyarlathotIA creates and manages Git branches for your work.
 
-| Flag | Description |
-|------|-------------|
-| `--work-branch <name>` | Switch to an existing branch instead of creating a timestamped one |
-| `--create` | Create the work branch if it doesn't exist (requires `--work-branch`) |
-| `--base-branch <name>` | Specify which branch to create new branches from |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--current-branch` | `-H` | Work on current branch — no branch creation, no cleanup on exit |
+| `--work-branch <name>` | `-w` | Switch to an existing branch instead of creating a timestamped one |
+| `--create` | | Create the work branch if it doesn't exist (requires `--work-branch`) |
+| `--base-branch <name>` | | Specify which branch to create new branches from |
 
 **Default behavior**: Creates timestamped branches like `claude-2026-01-11-143052`
+
+**`--current-branch` / `-H`**: Skips all branch management. Works directly on whatever branch you're on. Rejects protected branches (main/master). Not compatible with workspace mode.
 
 **See also**: [BRANCH_MANAGEMENT.md](BRANCH_MANAGEMENT.md) for detailed workflows.
 
@@ -155,9 +159,20 @@ System-level operations.
 | `--image` + `--flavor` | `--image` | Custom image overrides flavor |
 | `--work-branch` + `--base-branch` | Both apply | Creates/switches work branch from base |
 
+### Mutually Exclusive
+
+| Flag A | Flag B | Reason |
+|--------|--------|--------|
+| `--current-branch` | `--work-branch` | One stays, the other switches |
+| `--current-branch` | `--create` | Nothing to create in current-branch mode |
+| `--current-branch` | Workspace mode | Workspace requires branch sync across repos |
+
 ### Compatible Combinations
 
 ```bash
+# Work on current branch (simplest option)
+nyia-claude -H
+
 # Work branch from specific base
 nyia-claude --work-branch feature/x --create --base-branch develop
 
@@ -232,6 +247,23 @@ nyia-claude --path /path/to/other/project
 ---
 
 ## Error Messages
+
+### `--current-branch cannot be used with --work-branch`
+
+```
+Error: --current-branch cannot be used with --work-branch
+--current-branch works on your current branch, --work-branch switches to a specific one
+```
+
+**Fix**: Use one or the other. `-H` to stay, `-w <name>` to switch.
+
+### `Cannot use --current-branch on protected branch`
+
+```
+Cannot use protected branch as work branch: 'main'
+```
+
+**Fix**: Switch to a work branch first (`git checkout feature/x`), then use `-H`.
 
 ### `--create requires --work-branch`
 

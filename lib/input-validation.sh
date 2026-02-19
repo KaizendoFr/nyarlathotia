@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 NyarlathotIA Contributors
 # Input validation functions for security

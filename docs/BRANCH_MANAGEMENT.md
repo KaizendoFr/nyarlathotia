@@ -55,11 +55,48 @@ nyia-claude --work-branch feature/auth
 - If branch exists: switches to it
 - If branch missing: shows error with suggestions
 
+### Mode 4: Current Branch (`-H`)
+
+Work directly on whatever branch you're already on. No branch creation, no switching, no cleanup on exit.
+
+```bash
+git checkout feature/auth
+nyia-claude -H
+# Works on feature/auth — no new branch created
+```
+
+**Use when**:
+- You already checked out the right branch
+- You don't want nyia to manage branches at all
+- You want the simplest, lowest-friction workflow
+
+**Restrictions**:
+- Cannot use on protected branches (main/master)
+- Cannot use in workspace mode
+- Cannot combine with `--work-branch` or `--create`
+
 ---
 
 ## Flags Reference
 
-### `--work-branch <name>`
+### `--current-branch` / `-H`
+
+Work on the current branch. Skips all branch creation and cleanup.
+
+```bash
+# Simplest usage
+nyia-claude -H
+
+# Long form
+nyia-claude --current-branch
+```
+
+**Protected branch guard**: If you're on `main` or `master`, this will error:
+```
+Cannot use protected branch as work branch: 'main'
+```
+
+### `--work-branch <name>` / `-w`
 
 Specify a named branch instead of creating a timestamped one.
 

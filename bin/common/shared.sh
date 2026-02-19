@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 NyarlathotIA Contributors
 
@@ -58,10 +58,21 @@ get_project_home() {
     echo "$(cd "$script_dir/../.." && pwd)"
 }
 
+# Cross-platform sha256sum (macOS has shasum, Linux has sha256sum)
+portable_sha256sum() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256
+    else
+        openssl dgst -sha256 | sed 's/^.* //'
+    fi
+}
+
 # Generate project hash for data isolation
 get_project_hash() {
     local project_path="$1"
-    echo "$project_path" | sha256sum | cut -d' ' -f1 | cut -c1-12
+    echo "$project_path" | portable_sha256sum | cut -d' ' -f1 | cut -c1-12
 }
 
 # Platform-aware realpath function

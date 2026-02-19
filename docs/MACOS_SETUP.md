@@ -14,8 +14,9 @@ The installer will:
 1. Check your macOS version (requires 13 Ventura or newer)
 2. Detect if Docker Desktop is installed and running
 3. Guide you through Docker installation if needed (Homebrew or direct download)
-4. Download and install NyarlathotIA
-5. Configure your PATH automatically (detects zsh vs bash)
+4. Check for Bash 4+ and offer to install via Homebrew if missing
+5. Download and install NyarlathotIA
+6. Configure your PATH automatically (detects zsh vs bash)
 
 ### Beginner Guide
 
@@ -55,15 +56,28 @@ chmod +x ~/.local/lib/nyarlathotia/bin/nyia*
 
 ## Prerequisites (if not using macOS installer)
 
-1. **Docker Desktop for Mac**
+1. **Bash 4.0 or newer** (macOS ships Bash 3.2 which is too old)
+   ```bash
+   # Install via Homebrew
+   brew install bash
+
+   # Verify version (should show 5.x)
+   /opt/homebrew/bin/bash --version
+   ```
+   The macOS installer handles this automatically if Homebrew is available.
+
+2. **Docker Desktop for Mac**
    - Download from: https://docs.docker.com/desktop/mac/install/
    - Or via Homebrew: `brew install --cask docker`
    - Start Docker Desktop from Applications
 
-2. **Verify Docker is running**
+3. **Verify Docker is running**
    ```bash
    docker info
    ```
+
+> **Note**: Maintainer packaging scripts (`preprocess-runtime.sh`, `release.sh`, etc.)
+> are Linux-only workflow tools and are not needed on macOS end-user systems.
 
 ## First Run
 

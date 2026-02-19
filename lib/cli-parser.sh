@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 NyarlathotIA Contributors
 
@@ -80,6 +80,7 @@ export PROJECT_PATH=""
 export BASE_BRANCH=""
 export WORK_BRANCH=""
 export CREATE_BRANCH="false"
+export CURRENT_BRANCH_MODE="false"
 export BUILD_CUSTOM_IMAGE=""
 
 # RAG control flags (Plan 66 - Opt-in, Plan 88 - Config-based model)
@@ -126,6 +127,7 @@ get_assistant_arg_desc() {
         "--base-branch") echo "Specify Git base branch to work from" ;;
         "--work-branch") echo "Reuse existing work branch for your work" ;;
         "--create") echo "Create work branch if it doesn't exist (use with --work-branch)" ;;
+        "--current-branch") echo "Work on current branch (skip branch creation)" ;;
         "--build-custom-image") echo "Build custom Docker image with your overlays (power users)" ;;
         "--setup") echo "Interactive model/provider setup (OpenCode)" ;;
         "--login") echo "Authenticate using the assistant container" ;;
@@ -144,7 +146,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
+    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -314,7 +316,8 @@ Operations:
   --shell                  # Interactive bash in container
   --login                  # Authenticate assistant
   --status                 # Show current config & overlays
-  --work-branch <name>     # Reuse existing work branch
+  -H, --current-branch     # Work on current branch (skip branch creation)
+  -w, --work-branch <name> # Reuse existing work branch
   --base-branch <name>     # Specify Git base branch
 
 Workspace Mode (Multi-Repository):
@@ -545,7 +548,7 @@ parse_assistant_args() {
                     exit 1
                 fi
                 ;;
-            --work-branch)
+            --work-branch|-w)
                 if [[ -n "$2" ]]; then
                     WORK_BRANCH="$2"
                     shift 2
@@ -557,6 +560,10 @@ parse_assistant_args() {
                 ;;
             --create)
                 CREATE_BRANCH="true"
+                shift
+                ;;
+            --current-branch|-H)
+                CURRENT_BRANCH_MODE="true"
                 shift
                 ;;
             --build-custom-image)
@@ -604,7 +611,8 @@ parse_assistant_args() {
                     echo "  --build-custom-image Build custom image with overlays" >&2
                     echo "  --no-cache           Force rebuild without cache (use with --build-custom-image)" >&2
                     echo "  --base-branch <name> Specify Git base branch" >&2
-                    echo "  --work-branch <name> Reuse work branch" >&2
+                    echo "  -H, --current-branch Work on current branch (skip branch creation)" >&2
+                    echo "  -w, --work-branch <name> Reuse work branch" >&2
                     echo "" >&2
                     echo "Example: nyia-claude --build-custom-image --no-cache" >&2
                     
@@ -671,6 +679,7 @@ parse_args() {
     export PROJECT_PATH=""
     export FLAVOR=""
     export BASE_BRANCH=""
+    export CURRENT_BRANCH_MODE="false"
         export COMMAND=""
     export ASSISTANT_NAME=""
     export USER_PROMPT=""
@@ -745,6 +754,19 @@ validate_args() {
     if [[ -n "$DOCKER_IMAGE" && "$BUILD_IMAGE" == "true" ]]; then
         echo "Error: --image cannot be used with --build (build creates specific images)" >&2
         exit 1
+    fi
+
+    # Validate --current-branch is mutually exclusive with --work-branch and --create
+    if [[ "$CURRENT_BRANCH_MODE" == "true" ]]; then
+        if [[ -n "$WORK_BRANCH" ]]; then
+            echo "Error: --current-branch cannot be used with --work-branch" >&2
+            echo "--current-branch works on your current branch, --work-branch switches to a specific one" >&2
+            exit 1
+        fi
+        if [[ "$CREATE_BRANCH" == "true" ]]; then
+            echo "Error: --current-branch cannot be used with --create" >&2
+            exit 1
+        fi
     fi
 
     # Validate --create requires --work-branch

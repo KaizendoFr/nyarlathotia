@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 NyarlathotIA Contributors
 
@@ -24,7 +24,7 @@ PUBLIC_REPO="KaizendoFr/nyarlathotia"
 TARBALL_NAME="nyarlathotia-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.32"
+RELEASE_TAG="v0.1.0-alpha.34"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -105,6 +105,49 @@ check_ram() {
     ram_bytes=$(sysctl -n hw.memsize)
     local ram_gb=$((ram_bytes / 1024 / 1024 / 1024))
     echo "${ram_gb}GB RAM available"
+}
+
+#─────────────────────────────────────────────────────────────
+# Bash version check
+#─────────────────────────────────────────────────────────────
+
+check_bash() {
+    # macOS ships bash 3.2 (GPLv2). NyarlathotIA requires bash 4+.
+    # Check if a modern bash is available via Homebrew.
+    local brew_bash=""
+    if [[ -x /opt/homebrew/bin/bash ]]; then
+        brew_bash="/opt/homebrew/bin/bash"
+    elif [[ -x /usr/local/bin/bash ]]; then
+        brew_bash="/usr/local/bin/bash"
+    fi
+
+    if [[ -n "$brew_bash" ]]; then
+        local version
+        version=$("$brew_bash" --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        local major=${version%%.*}
+        if [[ "$major" -ge 4 ]]; then
+            print_success "Bash $version available at $brew_bash"
+            return 0
+        fi
+    fi
+
+    # Stock /bin/bash is 3.2
+    return 1
+}
+
+install_modern_bash() {
+    if check_homebrew; then
+        print_info "Installing modern Bash via Homebrew..."
+        local brew_cmd
+        brew_cmd=$(get_brew_path)
+        if "$brew_cmd" install bash; then
+            print_success "Bash 5.x installed"
+            return 0
+        fi
+    fi
+    print_error "Could not install modern Bash"
+    print_info "Please run: brew install bash"
+    return 1
 }
 
 #─────────────────────────────────────────────────────────────
@@ -455,6 +498,29 @@ main() {
             wait_for_docker
             ;;
     esac
+
+    echo ""
+    echo "Checking for modern Bash..."
+    echo ""
+
+    if ! check_bash; then
+        print_warning "NyarlathotIA requires Bash 4.0+ (macOS ships 3.2)"
+        if check_homebrew; then
+            echo -n "Install modern Bash via Homebrew? [Y/n]: "
+            read -r response
+            if [[ ! "$response" =~ ^[Nn] ]]; then
+                install_modern_bash || fail "Failed to install modern Bash"
+            else
+                print_warning "NyarlathotIA will not work without Bash 4+"
+                print_info "Install later with: brew install bash"
+            fi
+        else
+            print_error "Homebrew not found. Modern Bash is required."
+            print_info "Install Homebrew first: https://brew.sh"
+            print_info "Then run: brew install bash"
+            fail "Bash 4+ is required for NyarlathotIA"
+        fi
+    fi
 
     check_existing_install
     install_nyarlathotia

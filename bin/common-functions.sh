@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 NyarlathotIA Contributors
 
@@ -645,6 +645,49 @@ get_nyarlathotia_home() {
 
     echo "$config_dir"
     return 0
+}
+
+# === CONFIG BACKUP ===
+
+# Backup assistant config files before container launch.
+# Protects against corruption (e.g., disk full during session).
+# One backup per day, keeps last 7 days, silent by default.
+backup_assistant_config() {
+    local config_dir="$1"
+    local backup_base="$config_dir/.backups"
+    local today=$(date +%Y-%m-%d)
+    local today_backup="$backup_base/$today"
+
+    # Skip if today's backup already exists
+    if [[ -d "$today_backup" ]]; then
+        print_verbose "Config backup already exists for today: $today_backup"
+        return 0
+    fi
+
+    # Skip if no files to backup (empty config dir)
+    local file_count
+    file_count=$(find "$config_dir" -maxdepth 1 -type f 2>/dev/null | wc -l)
+    if [[ "$file_count" -eq 0 ]]; then
+        print_verbose "No config files to backup in $config_dir"
+        return 0
+    fi
+
+    # Create today's backup and copy top-level files only
+    mkdir -p "$today_backup"
+    find "$config_dir" -maxdepth 1 -type f -exec cp {} "$today_backup/" \;
+    print_verbose "Config backed up to $today_backup ($file_count files)"
+
+    # Prune old backups: keep last 7 daily backups
+    if [[ -d "$backup_base" ]]; then
+        local old_backups
+        old_backups=$(ls -1d "$backup_base"/????-??-?? 2>/dev/null | sort -r | tail -n +8)
+        if [[ -n "$old_backups" ]]; then
+            echo "$old_backups" | while read -r old_dir; do
+                rm -rf "$old_dir"
+                print_verbose "Pruned old config backup: $old_dir"
+            done
+        fi
+    fi
 }
 
 # === VERSION MANAGEMENT ===
@@ -1903,6 +1946,11 @@ run_docker_container() {
         docker_env_args+=(-e NYIA_WORK_BRANCH="${NYIA_WORK_BRANCH}")
     fi
 
+    # Pass current-branch mode to container (skip cleanup trap) - Plan 134
+    if [[ "${NYIA_CURRENT_BRANCH_MODE:-}" == "true" ]]; then
+        docker_env_args+=(-e NYIA_CURRENT_BRANCH_MODE="true")
+    fi
+
     # Pass RAG settings to container (Plan 66 - Opt-in RAG)
     if [[ -n "${ENABLE_RAG:-}" ]]; then
         docker_env_args+=(-e ENABLE_RAG="${ENABLE_RAG}")
@@ -2084,6 +2132,9 @@ login_assistant() {
     local global_config_dir="$nyia_home/$assistant_cli"
     mkdir -p "$global_config_dir"
 
+    # Backup config before login (protects against corruption)
+    backup_assistant_config "$global_config_dir"
+
     # Source provider-specific hooks if they exist (ensure functions are available)
     local provider_hooks_file="$dockerfile_path/${assistant_cli}-hooks.sh"
     if [[ -f "$provider_hooks_file" ]]; then
@@ -2229,7 +2280,7 @@ login_assistant() {
             local login_cmd_str="${login_cmd[*]}"
 
             cat > "$wrapper_script" << EOF
-#!/bin/bash
+#!/usr/bin/env bash
 # Start config watcher in background - continuously monitors for changes
 (
     timeout=300  # 5 minutes max
@@ -2602,6 +2653,9 @@ run_assistant() {
     print_verbose "Assistant config dir: $global_config_dir"
     print_verbose "Config directory name: $config_dir_name"
 
+    # Backup config before launch (protects against corruption)
+    backup_assistant_config "$global_config_dir"
+
     # Get prompt filename for this assistant
     local prompt_filename=$(get_prompt_filename "$assistant_cli")
     
@@ -2733,6 +2787,32 @@ run_assistant() {
 
     # Handle branch creation/switching before running container
     if [[ "$shell_mode" != "true" ]]; then
+        # --current-branch is not compatible with workspace mode (Plan 134)
+        if [[ "${CURRENT_BRANCH_MODE:-false}" == "true" && "${WORKSPACE_MODE:-false}" == "true" ]]; then
+            print_error "--current-branch is not compatible with workspace mode"
+            print_info "Workspace mode requires branch synchronization across repos."
+            print_info "Use --work-branch <name> instead."
+            exit 1
+        fi
+
+        # --current-branch mode: validate current branch, skip branch creation (Plan 134)
+        if [[ "${CURRENT_BRANCH_MODE:-false}" == "true" ]]; then
+            local current=$(get_current_branch "$project_path")
+            # Reject detached HEAD
+            if [[ -z "$current" || "$current" == "HEAD" || "$current" == "no-git" ]]; then
+                print_error "Cannot use --current-branch in detached HEAD state"
+                print_info "Checkout a branch first: git checkout <branch-name>"
+                exit 1
+            fi
+            # Reuse existing branch validation (protected branch + format check)
+            if ! validate_work_branch "$current" "$project_path"; then
+                exit 1
+            fi
+            print_info "Working on current branch: $current (--current-branch mode)"
+            export NYIA_WORK_BRANCH="$current"
+            export NYIA_CURRENT_BRANCH_MODE="true"
+        else
+
         # Capture original branches BEFORE any branch operations (for rollback in workspace mode)
         if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
             capture_original_branches "$project_path"
@@ -2769,6 +2849,8 @@ run_assistant() {
                 exit 1
             fi
         fi
+
+        fi  # end CURRENT_BRANCH_MODE check
     fi
 
     if [[ "$shell_mode" == "true" ]]; then
