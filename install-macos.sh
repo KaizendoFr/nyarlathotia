@@ -24,7 +24,7 @@ PUBLIC_REPO="KaizendoFr/nyarlathotia"
 TARBALL_NAME="nyarlathotia-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.35"
+RELEASE_TAG="v0.1.0-alpha.36"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions

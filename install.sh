@@ -23,8 +23,8 @@ elif [[ -n "$NYIA_VERSION" ]]; then
     echo "📦 Installing specific version: $NYIA_VERSION"
 else
     # Default to latest release (pipeline may replace with specific tag for versioned releases)
-    RELEASE_TYPE="tags/v0.1.0-alpha.35"
-    echo "📦 Installing version: v0.1.0-alpha.35"
+    RELEASE_TYPE="tags/v0.1.0-alpha.36"
+    echo "📦 Installing version: v0.1.0-alpha.36"
 fi
 
 # Find release with debugging
