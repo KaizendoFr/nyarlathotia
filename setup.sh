@@ -103,6 +103,12 @@ if [[ -f "$BIN_DIR/assistant-template.sh" ]]; then
     echo "✅ Updated paths for installed layout"
 fi
 
+# Fix shared.sh path in input-validation.sh for installed layout
+if [[ -f "$LIB_DIR/input-validation.sh" ]]; then
+    sed_inplace 's|source "\$(dirname "\${BASH_SOURCE\[0\]}")/../bin/common/shared\.sh"|source "$HOME/.local/bin/common/shared.sh"|' "$LIB_DIR/input-validation.sh"
+    echo "✅ Fixed shared.sh path in input-validation.sh"
+fi
+
 # Check and update PATH
 if ! echo "$PATH" | grep -q "$BIN_DIR"; then
     echo ""
