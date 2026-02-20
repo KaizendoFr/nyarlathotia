@@ -24,7 +24,7 @@ PUBLIC_REPO="KaizendoFr/nyarlathotia"
 TARBALL_NAME="nyarlathotia-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.36"
+RELEASE_TAG="v0.1.0-alpha.37"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -233,7 +233,7 @@ ${CYAN}│${NC}   [2] Download from docker.com (opens browser)           ${CYAN}
 ${CYAN}│${NC}   [3] Skip (I'll install Docker myself)                  ${CYAN}│${NC}"
 
     echo -n "Your choice [1/2/3]: "
-    read -r choice
+    read -r choice < /dev/tty
 
     case "$choice" in
         1)
@@ -245,7 +245,7 @@ ${CYAN}│${NC}   [3] Skip (I'll install Docker myself)                  ${CYAN}
                 print_info "Or choose option 2 to download Docker directly"
                 echo ""
                 echo -n "Press ENTER to choose again or Ctrl+C to exit: "
-                read -r
+                read -r < /dev/tty
                 prompt_docker_install
             fi
             ;;
@@ -276,7 +276,7 @@ ${CYAN}│${NC}      (whale icon in menu bar stops animating)            ${CYAN}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   Press ENTER when Docker is running...                  ${CYAN}│${NC}"
 
-    read -r
+    read -r < /dev/tty
 
     echo -n "Checking Docker... "
     local attempts=0
@@ -289,7 +289,7 @@ ${CYAN}│${NC}   Press ENTER when Docker is running...                  ${CYAN}
             print_error "Docker not responding"
             print_info "Make sure Docker Desktop is fully started"
             echo -n "Try again? [y/N]: "
-            read -r retry
+            read -r retry < /dev/tty
             if [[ "$retry" =~ ^[Yy] ]]; then
                 attempts=0
             else
@@ -313,7 +313,7 @@ ${CYAN}│${NC}   folder and wait for it to start.                       ${CYAN}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   Press ENTER when Docker is running...                  ${CYAN}│${NC}"
 
-    read -r
+    read -r < /dev/tty
     wait_for_docker
 }
 
@@ -328,7 +328,7 @@ check_existing_install() {
             current_version=$(cat "$INSTALL_DIR/VERSION")
             print_warning "NyarlathotIA $current_version already installed"
             echo -n "Upgrade to latest? [Y/n]: "
-            read -r response
+            read -r response < /dev/tty
             if [[ "$response" =~ ^[Nn] ]]; then
                 print_info "Installation cancelled"
                 exit 0
@@ -337,7 +337,7 @@ check_existing_install() {
         else
             print_warning "Existing installation found (unknown version)"
             echo -n "Reinstall? [Y/n]: "
-            read -r response
+            read -r response < /dev/tty
             if [[ "$response" =~ ^[Nn] ]]; then
                 print_info "Installation cancelled"
                 exit 0
@@ -507,7 +507,7 @@ main() {
         print_warning "NyarlathotIA requires Bash 4.0+ (macOS ships 3.2)"
         if check_homebrew; then
             echo -n "Install modern Bash via Homebrew? [Y/n]: "
-            read -r response
+            read -r response < /dev/tty
             if [[ ! "$response" =~ ^[Nn] ]]; then
                 install_modern_bash || fail "Failed to install modern Bash"
             else
