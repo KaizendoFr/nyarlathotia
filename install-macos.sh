@@ -24,7 +24,7 @@ PUBLIC_REPO="KaizendoFr/nyarlathotia"
 TARBALL_NAME="nyarlathotia-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.37"
+RELEASE_TAG="v0.1.0-alpha.38"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -335,7 +335,7 @@ check_existing_install() {
             fi
             print_info "Upgrading..."
         else
-            print_warning "Existing installation found (unknown version)"
+            print_warning "Nyia Keeper installation found (unknown version)"
             echo -n "Reinstall? [Y/n]: "
             read -r response < /dev/tty
             if [[ "$response" =~ ^[Nn] ]]; then
@@ -360,8 +360,7 @@ install_nyarlathotia() {
 
     print_info "Downloading from: $tarball_url"
 
-    # Create temp directory for extraction
-    local temp_dir
+    # Create temp directory for extraction (not local — EXIT trap needs it after function returns)
     temp_dir=$(mktemp -d)
 
     # Cleanup on exit
@@ -426,8 +425,10 @@ configure_path() {
             ;;
     esac
 
+    # Homebrew PATH not needed here — installed scripts auto-detect Homebrew Bash
+    # via re-exec shim in common-functions.sh (Plan 142)
     local path_line='export PATH="$HOME/.local/bin:$PATH"'
-    local marker="# NyarlathotIA PATH"
+    local marker="# Nyia Keeper PATH"
 
     # Check if already configured (idempotent - don't duplicate)
     if grep -q "\.local/bin" "$shell_config" 2>/dev/null; then
@@ -521,6 +522,10 @@ main() {
             fail "Bash 4+ is required for NyarlathotIA"
         fi
     fi
+
+    echo ""
+    echo "Checking for existing Nyia Keeper installation..."
+    echo ""
 
     check_existing_install
     install_nyarlathotia

@@ -7,6 +7,20 @@
 
 set -e
 
+# macOS ships Bash 3.2 — auto-detect and re-exec under Homebrew Bash 5.x if needed
+if [ "${BASH_VERSINFO[0]}" -lt 4 ] && [ -z "${_NYIA_BASH_REEXEC:-}" ]; then
+    for _brew_bash in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        if [ -x "$_brew_bash" ]; then
+            export _NYIA_BASH_REEXEC=1
+            exec "$_brew_bash" "$0" "$@"
+        fi
+    done
+    echo "Error: Bash 4.0+ required. Current version: ${BASH_VERSION}" >&2
+    echo "Install modern Bash with: brew install bash" >&2
+    exit 1
+fi
+unset _NYIA_BASH_REEXEC
+
 # Standard bash 4.0+ features used throughout
 
 # === MOUNT EXCLUSIONS INTEGRATION ===
