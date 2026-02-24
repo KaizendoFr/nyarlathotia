@@ -5,3 +5,4 @@ react|node + vite, storybook, @testing-library/react
 cypress|E2E testing with headless Chromium
 expo|expo-cli, eas-cli for React Native cloud builds
 php-react|PHP 8.2 + React + Storybook + Jest + Cypress + PHPUnit
+rust-tauri|Rust, Cargo, Tauri v2, clippy, rustfmt, cargo-watch, Node.js 22

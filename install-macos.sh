@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
-# NyarlathotIA macOS Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/scripts/install-macos.sh | bash
-# Future: curl -fsSL https://get.nyarlathotia.io/mac | bash
+# Nyia Keeper macOS Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/scripts/install-macos.sh | bash
+# Future: curl -fsSL https://get.nyiakeeper.io/mac | bash
 
 set -euo pipefail
 
@@ -18,13 +18,13 @@ NC='\033[0m'
 BOLD='\033[1m'
 
 # Config - aligned with existing release artifacts
-INSTALL_DIR="$HOME/.local/lib/nyarlathotia"
+INSTALL_DIR="$HOME/.local/lib/nyiakeeper"
 BIN_DIR="$HOME/.local/bin"
-PUBLIC_REPO="KaizendoFr/nyarlathotia"
-TARBALL_NAME="nyarlathotia-runtime.tar.gz"
+PUBLIC_REPO="KaizendoFr/nyia-keeper"
+TARBALL_NAME="nyiakeeper-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.39"
+RELEASE_TAG="v0.1.0-alpha.42"
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -34,7 +34,7 @@ print_header() {
     echo ""
     echo -e "${CYAN}╭──────────────────────────────────────────────────────────╮${NC}"
     echo -e "${CYAN}│                                                          │${NC}"
-    echo -e "${CYAN}│${NC}   ${BOLD}NyarlathotIA Installer for macOS${NC}                       ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC}   ${BOLD}Nyia Keeper Installer for macOS${NC}                       ${CYAN}│${NC}"
     echo -e "${CYAN}│${NC}   AI-powered coding assistants                           ${CYAN}│${NC}"
     echo -e "${CYAN}│                                                          │${NC}"
     echo -e "${CYAN}╰──────────────────────────────────────────────────────────╯${NC}"
@@ -112,7 +112,7 @@ check_ram() {
 #─────────────────────────────────────────────────────────────
 
 check_bash() {
-    # macOS ships bash 3.2 (GPLv2). NyarlathotIA requires bash 4+.
+    # macOS ships bash 3.2 (GPLv2). Nyia Keeper requires bash 4+.
     # Check if a modern bash is available via Homebrew.
     local brew_bash=""
     if [[ -x /opt/homebrew/bin/bash ]]; then
@@ -223,7 +223,7 @@ prompt_docker_install() {
     print_box "${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   ${BOLD}Docker Desktop Required${NC}                                ${CYAN}│${NC}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
-${CYAN}│${NC}   NyarlathotIA runs AI assistants in Docker containers.  ${CYAN}│${NC}
+${CYAN}│${NC}   Nyia Keeper runs AI assistants in Docker containers.  ${CYAN}│${NC}
 ${CYAN}│${NC}   Docker Desktop is free for personal use.               ${CYAN}│${NC}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   How would you like to install Docker?                  ${CYAN}│${NC}
@@ -326,7 +326,7 @@ check_existing_install() {
         if [[ -f "$INSTALL_DIR/VERSION" ]]; then
             local current_version
             current_version=$(cat "$INSTALL_DIR/VERSION")
-            print_warning "NyarlathotIA $current_version already installed"
+            print_warning "Nyia Keeper $current_version already installed"
             echo -n "Upgrade to latest? [Y/n]: "
             read -r response < /dev/tty
             if [[ "$response" =~ ^[Nn] ]]; then
@@ -346,9 +346,9 @@ check_existing_install() {
     fi
 }
 
-install_nyarlathotia() {
+install_nyiakeeper() {
     echo ""
-    print_info "Installing NyarlathotIA..."
+    print_info "Installing Nyia Keeper..."
 
     # Build download URL — RELEASE_TAG is patched at build time by preprocess-runtime.sh
     local tarball_url
@@ -371,7 +371,7 @@ install_nyarlathotia() {
 
     # Download and extract
     if ! curl -fsSL "$tarball_url" | tar -xz -C "$temp_dir"; then
-        fail "Failed to download NyarlathotIA"
+        fail "Failed to download Nyia Keeper"
     fi
 
     print_success "Downloaded runtime package"
@@ -451,7 +451,7 @@ print_success_message() {
     print_box "${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   ${GREEN}${BOLD}Installation complete!${NC} 🎉                              ${CYAN}│${NC}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
-${CYAN}│${NC}   ${BOLD}To start using NyarlathotIA:${NC}                           ${CYAN}│${NC}
+${CYAN}│${NC}   ${BOLD}To start using Nyia Keeper:${NC}                           ${CYAN}│${NC}
 ${CYAN}│${NC}                                                          ${CYAN}│${NC}
 ${CYAN}│${NC}   1. Close this Terminal window                          ${CYAN}│${NC}
 ${CYAN}│${NC}   2. Open a new Terminal window                          ${CYAN}│${NC}
@@ -505,21 +505,21 @@ main() {
     echo ""
 
     if ! check_bash; then
-        print_warning "NyarlathotIA requires Bash 4.0+ (macOS ships 3.2)"
+        print_warning "Nyia Keeper requires Bash 4.0+ (macOS ships 3.2)"
         if check_homebrew; then
             echo -n "Install modern Bash via Homebrew? [Y/n]: "
             read -r response < /dev/tty
             if [[ ! "$response" =~ ^[Nn] ]]; then
                 install_modern_bash || fail "Failed to install modern Bash"
             else
-                print_warning "NyarlathotIA will not work without Bash 4+"
+                print_warning "Nyia Keeper will not work without Bash 4+"
                 print_info "Install later with: brew install bash"
             fi
         else
             print_error "Homebrew not found. Modern Bash is required."
             print_info "Install Homebrew first: https://brew.sh"
             print_info "Then run: brew install bash"
-            fail "Bash 4+ is required for NyarlathotIA"
+            fail "Bash 4+ is required for Nyia Keeper"
         fi
     fi
 
@@ -528,7 +528,7 @@ main() {
     echo ""
 
     check_existing_install
-    install_nyarlathotia
+    install_nyiakeeper
     configure_path
     print_success_message
 }

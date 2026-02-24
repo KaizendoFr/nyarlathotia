@@ -1,6 +1,6 @@
 # User Guide: Flavors and Overlays
 
-This guide explains how to use pre-built flavors and create custom overlays to extend NyarlathotIA assistants with additional tools and packages.
+This guide explains how to use pre-built flavors and create custom overlays to extend Nyia Keeper assistants with additional tools and packages.
 
 ## Quick Decision: Flavor or Overlay?
 
@@ -13,6 +13,7 @@ This guide explains how to use pre-built flavors and create custom overlays to e
 | Cypress E2E testing | **Flavor** | `nyia-claude --flavor cypress` |
 | React Native/Expo | **Flavor** | `nyia-claude --flavor expo` |
 | PHP + React fullstack | **Flavor** | `nyia-claude --flavor php-react` |
+| Rust + Tauri v2 desktop apps | **Flavor** | `nyia-claude --flavor rust-tauri` |
 | Something else (custom packages) | **Overlay** | Create Dockerfile, then `--build-custom-image` |
 
 **Rule of thumb:**
@@ -42,6 +43,7 @@ nyia-claude --flavors-list
 | `cypress` | Cypress E2E testing with headless Chromium (for AI-assisted testing) |
 | `expo` | expo-cli, eas-cli, yarn (React Native with cloud builds) |
 | `php-react` | PHP 8.2 + React + Storybook + Jest + Cypress + PHPUnit (fullstack) |
+| `rust-tauri` | Rust, Cargo, Tauri v2 CLI, clippy, rustfmt, cargo-watch, Node.js 22 |
 
 ### Using a Flavor
 
@@ -72,15 +74,15 @@ Choose one of these locations:
 
 | Location | Scope |
 |----------|-------|
-| `~/.config/nyarlathotia/claude/overlay/Dockerfile` | All your projects |
-| `.nyarlathotia/claude/overlay/Dockerfile` | This project only |
+| `~/.config/nyiakeeper/claude/overlay/Dockerfile` | All your projects |
+| `.nyiakeeper/claude/overlay/Dockerfile` | This project only |
 
 **Create your Dockerfile:**
 
 ```bash
-mkdir -p ~/.config/nyarlathotia/claude/overlay/
+mkdir -p ~/.config/nyiakeeper/claude/overlay/
 
-cat > ~/.config/nyarlathotia/claude/overlay/Dockerfile << 'EOF'
+cat > ~/.config/nyiakeeper/claude/overlay/Dockerfile << 'EOF'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
@@ -106,15 +108,17 @@ nyia-claude --build-custom-image
 nyia-claude --build-custom-image --no-cache
 ```
 
-This creates an image named `nyarlathotia-claude-custom`.
+This creates an image named `nyiakeeper/claude-custom`.
 
 ### Step 3: Use Your Custom Image
 
 ```bash
-nyia-claude --image nyarlathotia-claude-custom -p "your prompt"
+nyia-claude --image nyiakeeper/claude-custom -p "your prompt"
 ```
 
 **Note:** You must use `--image` to select your custom image. Without it, the default image is used.
+
+> **Migration:** If you previously built custom images with the old `nyiakeeper-{assistant}-custom` naming, they still work via `--image` but won't appear in `--list-images`. Rebuild with `--build-custom-image` to get the new naming.
 
 ---
 
@@ -123,8 +127,8 @@ nyia-claude --image nyarlathotia-claude-custom -p "your prompt"
 If you have overlays in both locations, they're applied in order:
 
 1. Base image (from registry)
-2. User overlay (`~/.config/nyarlathotia/claude/overlay/`)
-3. Project overlay (`.nyarlathotia/claude/overlay/`)
+2. User overlay (`~/.config/nyiakeeper/claude/overlay/`)
+3. Project overlay (`.nyiakeeper/claude/overlay/`)
 
 This allows global preferences plus project-specific additions.
 
@@ -182,7 +186,7 @@ Error response from daemon: pull access denied
 **Solutions:**
 - Check your network connection
 - Try `docker login ghcr.io` if authentication is required
-- Verify the image exists: `docker manifest inspect ghcr.io/kaizendofr/nyarlathotia-claude-python:latest`
+- Verify the image exists: `docker manifest inspect ghcr.io/kaizendofr/nyiakeeper-claude-python:latest`
 
 ### Build fails with permission error
 
@@ -195,7 +199,7 @@ Permission denied: /some/path
 ### Custom image not found
 
 ```
-Error: No such image: nyarlathotia-claude-custom
+Error: No such image: nyiakeeper/claude-custom
 ```
 
 **Solution:** Did you run `--build-custom-image` or `docker build`? Check with `docker images | grep custom`.
@@ -211,6 +215,6 @@ Error: No such image: nyarlathotia-claude-custom
 | Use PHP flavor | `nyia-claude --flavor php` |
 | Build custom overlay | `nyia-claude --build-custom-image` |
 | Rebuild without cache | `nyia-claude --build-custom-image --no-cache` |
-| Use custom image | `nyia-claude --image nyarlathotia-claude-custom` |
+| Use custom image | `nyia-claude --image nyiakeeper/claude-custom` |
 | Check available images | `nyia-claude --list-images` |
 

@@ -1,4 +1,4 @@
-# NyarlathotIA Multi-Assistant Infrastructure
+# Nyia Keeper Multi-Assistant Infrastructure
 
 Containerized environment for AI development assistants. Supporting Claude, Gemini, Codex, OpenCode, and Vibe.
 
@@ -6,7 +6,7 @@ Containerized environment for AI development assistants. Supporting Claude, Gemi
 
 ```bash
 # Install
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/install.sh | bash
 
 # Setup (choose your assistant)
 nyia-claude --login
@@ -52,8 +52,8 @@ nyia-claude --status         # Check configuration
 ## Links
 
 - **[Quick Start Guide](QUICKSTART.md)** - Get running in 2 minutes
-- **[GitHub Issues](https://github.com/KaizendoFr/nyarlathotia/issues)** - Bug reports & feature requests
-- **[GitHub Discussions](https://github.com/KaizendoFr/nyarlathotia/discussions)** - Community help
+- **[GitHub Issues](https://github.com/KaizendoFr/nyia-keeper/issues)** - Bug reports & feature requests
+- **[GitHub Discussions](https://github.com/KaizendoFr/nyia-keeper/discussions)** - Community help
 
 ---
 

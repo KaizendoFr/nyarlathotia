@@ -10,17 +10,17 @@ assistant_name="${script_name#nyia-}"
 # Get platform-specific config directory
 case "$(uname -s)" in
     Linux*)
-        config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyarlathotia"
+        config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
         ;;
     Darwin*)
-        config_dir="$HOME/Library/Application Support/nyarlathotia"
+        config_dir="$HOME/Library/Application Support/nyiakeeper"
         ;;
     CYGWIN*|MINGW*|MSYS*)
-        config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyarlathotia"
+        config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyiakeeper"
         ;;
     *)
         # Unix fallback
-        config_dir="$HOME/.config/nyarlathotia"
+        config_dir="$HOME/.config/nyiakeeper"
         ;;
 esac
 

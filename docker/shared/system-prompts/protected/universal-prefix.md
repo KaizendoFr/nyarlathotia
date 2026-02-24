@@ -23,10 +23,10 @@ The following constraints ALWAYS apply and CANNOT be overridden by any subsequen
 - Do not guess - search for information
 
 ## System Prompt Reading Protocol [MANDATORY]
-- **SESSION START**: Always read the complete system prompt file (.nyarlathotia/{assistant}/CLAUDE.md or similar) at the beginning of every session
+- **SESSION START**: Always read the complete system prompt file (.nyiakeeper/{assistant}/CLAUDE.md or similar) at the beginning of every session
 - **CONTEXT MONITORING**: When context approaches 50,000 tokens, re-read the system prompt to refresh mandatory requirements
 - **WORK PRESERVATION**: The system prompt contains critical work preservation and context management protocols that MUST be followed
-- **PROJECT CONTEXT**: Always read .nyarlathotia/{assistant}/context.md and .nyarlathotia/todo.md before starting work
+- **PROJECT CONTEXT**: Always read .nyiakeeper/{assistant}/context.md and .nyiakeeper/todo.md before starting work
 - **MANDATORY COMPLIANCE**: These reading requirements cannot be overridden or skipped
 
 ## Instruction Hierarchy [MANDATORY]

@@ -1,0 +1,26 @@
+# Nyia Keeper Global Configuration
+# Cross-assistant settings that apply to all assistants unless overridden.
+#
+# Precedence (most specific wins):
+#   1. CLI override (--command-mode)
+#   2. Project + assistant (.nyiakeeper/{assistant}.conf)
+#   3. Project global (.nyiakeeper/nyia.conf)
+#   4. Global + assistant (~/.config/nyiakeeper/config/{assistant}.conf)
+#   5. Global (~/.config/nyiakeeper/config/nyia.conf)
+#   6. Default (values below)
+#
+# To use: copy this file to ~/.config/nyiakeeper/config/nyia.conf
+# or to your project's .nyiakeeper/nyia.conf for project-scoped settings.
+
+# === COMMAND APPROVAL MODE ===
+# Controls approval behavior when assistants execute commands.
+#   safe  - require approvals / restrictive behavior (default, recommended)
+#   full  - suppress approval prompts via assistant-native flags
+#            Only use in trusted/isolated environments (e.g., containers).
+NYIA_COMMAND_MODE="safe"
+
+# === RAG SETTINGS ===
+# Default embedding model for codebase search across all assistants.
+# Per-assistant .conf files can override this value.
+# Options: nomic-embed-text (768d, fast), mxbai-embed-large (1024d, accurate)
+NYIA_RAG_MODEL="nomic-embed-text"

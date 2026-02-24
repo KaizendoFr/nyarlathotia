@@ -1,10 +1,10 @@
 # Branch Management Guide
 
-How NyarlathotIA manages Git branches for AI-assisted development.
+How Nyia Keeper manages Git branches for AI-assisted development.
 
 ## Overview
 
-NyarlathotIA automatically creates isolated Git branches for AI work. This keeps your main branch clean and lets you review AI changes before merging.
+Nyia Keeper automatically creates isolated Git branches for AI work. This keeps your main branch clean and lets you review AI changes before merging.
 
 **Key principle**: AI work happens on separate branches, never directly on `main` or `master`.
 
@@ -190,7 +190,7 @@ nyia-claude --work-branch feature/api --create
 
 ## Protected Branches
 
-NyarlathotIA prevents direct work on protected branches:
+Nyia Keeper prevents direct work on protected branches:
 
 - `main`
 - `master`

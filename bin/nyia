@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 
-# NyarlathotIA Runtime Dispatcher
+# Nyia Keeper Runtime Dispatcher
 set -e
 
 script_dir="$(dirname "$(realpath "$0")")"
@@ -13,12 +13,12 @@ source "$script_dir/common-functions.sh" 2>/dev/null || {
 }
 
 # Configuration
-NYARLATHOTIA_HOME=$(get_nyarlathotia_home)
-CONFIG_DIR="$NYARLATHOTIA_HOME/config"
+NYIAKEEPER_HOME=$(get_nyiakeeper_home)
+CONFIG_DIR="$NYIAKEEPER_HOME/config"
 
 # === DISPATCHER COMMANDS ===
 list_available_assistants() {
-    echo "Available NyarlathotIA Assistants:"
+    echo "Available Nyia Keeper Assistants:"
     echo ""
     
     local found_any=false
@@ -54,7 +54,7 @@ list_available_assistants() {
         echo "  No assistants found in: $CONFIG_DIR"
         echo ""
         echo "To get started:"
-        echo "  1. Run installation: curl -fsSL https://github.com/KaizendoFr/nyarlathotia/releases/latest/download/install.sh | bash"
+        echo "  1. Run installation: curl -fsSL https://github.com/KaizendoFr/nyia-keeper/releases/latest/download/install.sh | bash"
         echo "  2. Configure assistant: nyia-claude --help"
     fi
     
@@ -64,22 +64,22 @@ list_available_assistants() {
 show_config_list() {
     local show_origin="${1:-false}"
     
-    echo "NyarlathotIA Configuration:"
+    echo "Nyia Keeper Configuration:"
     
     if [[ "$show_origin" == "true" ]]; then
         # Show configuration with sources (Git pattern)
-        if [[ -n "$NYARLATHOTIA_HOME" ]]; then
-            echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME [environment]"
+        if [[ -n "$NYIAKEEPER_HOME" ]]; then
+            echo "  NYIAKEEPER_HOME=$NYIAKEEPER_HOME [environment]"
         else
-            echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME [platform default]"
+            echo "  NYIAKEEPER_HOME=$NYIAKEEPER_HOME [platform default]"
         fi
         echo "  CONFIG_DIR=$CONFIG_DIR [derived]"
-        echo "  DATA_DIR=$NYARLATHOTIA_HOME/data [derived]"
+        echo "  DATA_DIR=$NYIAKEEPER_HOME/data [derived]"
     else
         # Show configuration values only
-        echo "  NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME"
+        echo "  NYIAKEEPER_HOME=$NYIAKEEPER_HOME"
         echo "  CONFIG_DIR=$CONFIG_DIR"
-        echo "  DATA_DIR=$NYARLATHOTIA_HOME/data"
+        echo "  DATA_DIR=$NYIAKEEPER_HOME/data"
     fi
     
     echo ""
@@ -95,12 +95,12 @@ show_config_list() {
 }
 
 show_config_dump() {
-    echo "# NyarlathotIA Configuration Dump"
+    echo "# Nyia Keeper Configuration Dump"
     echo "# Generated on $(date)"
     echo ""
     
     echo "# Core Configuration"
-    echo "NYARLATHOTIA_HOME=$NYARLATHOTIA_HOME"
+    echo "NYIAKEEPER_HOME=$NYIAKEEPER_HOME"
     echo "CONFIG_DIR=$CONFIG_DIR"
     
     echo ""
@@ -112,12 +112,12 @@ show_config_dump() {
     
     echo ""
     echo "# Directory Structure"
-    echo "DATA_DIR=$NYARLATHOTIA_HOME/data"
+    echo "DATA_DIR=$NYIAKEEPER_HOME/data"
     
     # Show if directories exist
     echo ""
     echo "# Directory Status"
-    for dir in "$NYARLATHOTIA_HOME" "$NYARLATHOTIA_HOME/data" "$CONFIG_DIR"; do
+    for dir in "$NYIAKEEPER_HOME" "$NYIAKEEPER_HOME/data" "$CONFIG_DIR"; do
         if [[ -d "$dir" ]]; then
             echo "EXISTS: $dir"
         else
@@ -127,10 +127,10 @@ show_config_dump() {
 }
 
 show_config_view() {
-    echo "NyarlathotIA Effective Configuration:"
+    echo "Nyia Keeper Effective Configuration:"
     echo ""
-    echo "Home Directory: $NYARLATHOTIA_HOME"
-    echo "  Status: $(if [[ -d "$NYARLATHOTIA_HOME" ]]; then echo "EXISTS"; else echo "MISSING"; fi)"
+    echo "Home Directory: $NYIAKEEPER_HOME"
+    echo "  Status: $(if [[ -d "$NYIAKEEPER_HOME" ]]; then echo "EXISTS"; else echo "MISSING"; fi)"
     echo ""
     
     echo "Available Assistants:"
@@ -148,8 +148,8 @@ show_config_view() {
 }
 
 show_global_status() {
-    echo "NyarlathotIA Global Status:"
-    echo "  Home: $NYARLATHOTIA_HOME"
+    echo "Nyia Keeper Global Status:"
+    echo "  Home: $NYIAKEEPER_HOME"
     echo "  Config directory: $CONFIG_DIR"
     echo ""
     
@@ -163,7 +163,7 @@ show_global_status() {
     
     # Show data storage info
     echo "Data Storage:"
-    local data_dir="$NYARLATHOTIA_HOME/data"
+    local data_dir="$NYIAKEEPER_HOME/data"
     if [[ -d "$data_dir" ]]; then
         local project_count=$(find "$data_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
         echo "  Projects tracked: $project_count"
@@ -176,10 +176,16 @@ show_global_status() {
     echo ""
     echo "Docker Images:"
     if command -v docker >/dev/null; then
-        if docker images --filter "reference=nyarlathotia-*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q .; then
-            docker images --filter "reference=nyarlathotia-*" --format "  {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})" 2>/dev/null
-        else
-            echo "  No NyarlathotIA images found"
+        # List both GHCR-pulled (dash-form) and locally-built (slash-form) images
+        local found=false
+        for pattern in "nyiakeeper-*" "nyiakeeper/*"; do
+            if docker images --filter "reference=${pattern}" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q .; then
+                docker images --filter "reference=${pattern}" --format "  {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})" 2>/dev/null
+                found=true
+            fi
+        done
+        if [[ "$found" == "false" ]]; then
+            echo "  No Nyia Keeper images found"
         fi
     else
         echo "  Docker not available"
@@ -197,11 +203,22 @@ clean_old_images() {
     # List images that would be cleaned
     echo ""
     echo "Images that will be removed:"
-    docker images --filter "reference=nyarlathotia-*" --filter "dangling=true" --format "  {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  No dangling images found"
+    # List both GHCR-pulled (dash-form) and locally-built (slash-form) dangling images
+    for pattern in "nyiakeeper-*" "nyiakeeper/*"; do
+        docker images --filter "reference=${pattern}" --filter "dangling=true" --format "  {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null
+    done
+    # Show fallback if no dangling images found
+    local dangling_count=0
+    for pattern in "nyiakeeper-*" "nyiakeeper/*"; do
+        dangling_count=$((dangling_count + $(docker images --filter "reference=${pattern}" --filter "dangling=true" --format "1" 2>/dev/null | wc -l)))
+    done
+    if [[ "$dangling_count" -eq 0 ]]; then
+        echo "  No dangling images found"
+    fi
     
     # Ask for confirmation
     echo ""
-    echo "⚠️  This will remove dangling NyarlathotIA images to free up space."
+    echo "⚠️  This will remove dangling Nyia Keeper images to free up space."
     echo "   Active images will NOT be removed."
     echo ""
     read -p "Continue? [y/N] " -n 1 -r
@@ -209,7 +226,7 @@ clean_old_images() {
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Removing dangling images..."
-        if docker image prune --filter "label=nyarlathotia=true" --force 2>/dev/null; then
+        if docker image prune --filter "label=nyiakeeper=true" --force 2>/dev/null; then
             echo "✅ Cleanup completed"
         else
             echo "✅ No images to clean"
@@ -233,7 +250,7 @@ case "${1:-help}" in
             echo "  get <key>            Get specific configuration value"
             echo ""
             echo "Available keys for 'get':"
-            echo "  home, NYARLATHOTIA_HOME    Home directory path"
+            echo "  home, NYIAKEEPER_HOME    Home directory path"
             echo "  config, CONFIG_DIR         Config directory path"
             echo "  data, DATA_DIR             Data directory path"
             echo ""
@@ -261,9 +278,9 @@ case "${1:-help}" in
             get)
                 local key="${3:-}"
                 case "$key" in
-                    NYARLATHOTIA_HOME|home) echo "$NYARLATHOTIA_HOME" ;;
+                    NYIAKEEPER_HOME|home) echo "$NYIAKEEPER_HOME" ;;
                     CONFIG_DIR|config) echo "$CONFIG_DIR" ;;
-                    DATA_DIR|data) echo "$NYARLATHOTIA_HOME/data" ;;
+                    DATA_DIR|data) echo "$NYIAKEEPER_HOME/data" ;;
                     *) echo "Unknown config key: $key" >&2; exit 1 ;;
                 esac
                 ;;
@@ -311,7 +328,7 @@ case "${1:-help}" in
         handle_exclusions_command "$@"
         ;;
     help|--help|-h)
-        echo "NyarlathotIA Multi-Assistant Infrastructure"
+        echo "Nyia Keeper Multi-Assistant Infrastructure"
         echo "AI-powered development assistants for your projects"
         echo ""
         echo "QUICK START:"
@@ -339,7 +356,7 @@ case "${1:-help}" in
         echo "  nyia config get <key>                # Get specific value"
         echo ""
         echo "EXCLUSIONS (Security):"
-        echo "  nyia exclusions init        # Create .nyarlathotia-exclude file"
+        echo "  nyia exclusions init        # Create .nyiakeeper-exclude file"
         echo "  nyia exclusions list        # Show excluded files/patterns"
         echo "  nyia exclusions status      # Check exclusion system status"
         echo ""
@@ -353,9 +370,9 @@ case "${1:-help}" in
         echo "  nyia-claude -p 'Review this code'    # Use Claude"
         echo ""
         echo "TROUBLESHOOTING:"
-        echo "  - Config not found? Check ~/.config/nyarlathotia/config/"
+        echo "  - Config not found? Check ~/.config/nyiakeeper/config/"
         echo "  - Docker issues? Ensure Docker is running and you have access"
-        echo "  - Need help? Visit: https://github.com/KaizendoFr/nyarlathotia"
+        echo "  - Need help? Visit: https://github.com/KaizendoFr/nyia-keeper"
         echo ""
         echo "For assistant-specific help: nyia-<assistant> --help"
         ;;

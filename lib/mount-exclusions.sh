@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
-# NyarlathotIA Mount Exclusions Library - KISS Design
+# Copyright (c) 2024 Nyia Keeper Contributors
+# Nyia Keeper Mount Exclusions Library - KISS Design
 # Simple Docker overlay mounts to exclude sensitive files
 
 # Fallback print functions
@@ -54,9 +54,9 @@ This is a security feature to prevent accidental exposure of sensitive data to A
 
 To include this file:
 - Use --disable-exclusions flag
-- Or add an override in .nyarlathotia/exclusions.conf
+- Or add an override in .nyiakeeper/exclusions.conf
 
-NyarlathotIA Mount Exclusions System
+Nyia Keeper Mount Exclusions System
 EOF
     fi
     
@@ -72,18 +72,18 @@ This is a security feature to prevent accidental exposure of sensitive data to A
 
 ## To include this directory:
 - Use `--disable-exclusions` flag
-- Or add an override in `.nyarlathotia/exclusions.conf`
+- Or add an override in `.nyiakeeper/exclusions.conf`
 
 ---
-*NyarlathotIA Mount Exclusions System*
+*Nyia Keeper Mount Exclusions System*
 EOF
     fi
 }
 
-# Get user-defined exclusion patterns from .nyarlathotia/exclusions.conf
+# Get user-defined exclusion patterns from .nyiakeeper/exclusions.conf
 get_user_exclusion_patterns() {
     local project_path="${1:-$(pwd)}"
-    local exclusions_file="$project_path/.nyarlathotia/exclusions.conf"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
     
     # If file doesn't exist, return nothing
     [[ -f "$exclusions_file" ]] || return 0
@@ -110,7 +110,7 @@ get_user_exclusion_patterns() {
 # Get user-defined directory exclusion patterns
 get_user_exclusion_dirs() {
     local project_path="${1:-$(pwd)}"
-    local exclusions_file="$project_path/.nyarlathotia/exclusions.conf"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
     
     # If file doesn't exist, return nothing
     [[ -f "$exclusions_file" ]] || return 0
@@ -136,12 +136,12 @@ get_user_exclusion_dirs() {
 
 # Get common sensitive file patterns
 get_exclusion_patterns() {
-    # Core secrets (but preserve .nyarlathotia/creds/ directory - assistants need those)
+    # Core secrets (but preserve .nyiakeeper/creds/ directory - assistants need those)
     # Exclude .env files at project root (security risk) but allow in subdirs
     echo ".env *.key *.pem *.pfx *.p12 *.ppk *secret* *password* id_rsa id_dsa id_ecdsa id_ed25519"
     # Dangerous .env variants anywhere in project
     echo ".env.* env.local .env.production .env.staging .env.development .env.test .env.backup"
-    # Generic credentials (but not .nyarlathotia/creds/ directory)
+    # Generic credentials (but not .nyiakeeper/creds/ directory)
     echo "credentials.json credentials.yaml credentials.xml credentials.txt auth.json"
     
     # === INFRASTRUCTURE AS CODE ===
@@ -273,13 +273,13 @@ get_exclusion_patterns() {
     echo "*.license license.key license.txt"
     
     # === USER-DEFINED PATTERNS ===
-    # Add patterns from .nyarlathotia/exclusions.conf
+    # Add patterns from .nyiakeeper/exclusions.conf
     get_user_exclusion_patterns "${1:-$(pwd)}"
 }
 
 # Get sensitive directory patterns  
 get_exclusion_dirs() {
-    # === CLOUD PROVIDERS === (but NOT .nyarlathotia/creds/ - assistants need that)
+    # === CLOUD PROVIDERS === (but NOT .nyiakeeper/creds/ - assistants need that)
     echo ".aws .gcloud .azure .digitalocean .linode .vultr"
     
     # === KUBERNETES & ORCHESTRATION ===
@@ -334,35 +334,35 @@ get_exclusion_dirs() {
     echo ".packer .kitchen .inspec"
     
     # === USER-DEFINED DIRECTORIES ===
-    # Add directory patterns from .nyarlathotia/exclusions.conf
+    # Add directory patterns from .nyiakeeper/exclusions.conf
     get_user_exclusion_dirs "${1:-$(pwd)}"
 }
 
 # Global array for volume arguments
 declare -a VOLUME_ARGS
 
-# Global cache for nyarlathotia home (avoid calling get_nyarlathotia_home for every file)
+# Global cache for nyiakeeper home (avoid calling get_nyiakeeper_home for every file)
 _NYIA_HOME_CACHE=""
 
-# Check if path is a NyarlathotIA system path that should not be excluded
-is_nyarlathotia_system_path() {
+# Check if path is a Nyia Keeper system path that should not be excluded
+is_nyiakeeper_system_path() {
     local file_path="$1"
     local project_path="$2"
 
-    # Get NyarlathotIA home (cached to avoid repeated calls)
+    # Get Nyia Keeper home (cached to avoid repeated calls)
     if [[ -z "$_NYIA_HOME_CACHE" ]]; then
         # Use platform-aware function if available, otherwise fall back to default
-        if declare -f get_nyarlathotia_home >/dev/null 2>&1; then
-            _NYIA_HOME_CACHE="${NYARLATHOTIA_HOME:-$(get_nyarlathotia_home)}"
+        if declare -f get_nyiakeeper_home >/dev/null 2>&1; then
+            _NYIA_HOME_CACHE="${NYIAKEEPER_HOME:-$(get_nyiakeeper_home)}"
         else
-            _NYIA_HOME_CACHE="${NYARLATHOTIA_HOME:-$HOME/.config/nyarlathotia}"
+            _NYIA_HOME_CACHE="${NYIAKEEPER_HOME:-$HOME/.config/nyiakeeper}"
         fi
     fi
     local nyia_home="$_NYIA_HOME_CACHE"
     
-    # If the project IS the NyarlathotIA home, check for system subdirs
+    # If the project IS the Nyia Keeper home, check for system subdirs
     if [[ "$project_path" == "$nyia_home" ]] || [[ "$(realpath "$project_path")" == "$(realpath "$nyia_home")" ]]; then
-        # Check if file is in protected NyarlathotIA directories
+        # Check if file is in protected Nyia Keeper directories
         case "$file_path" in
             claude/*|codex/*|gemini/*|opencode/*|data/*|config/*|bin/*|lib/*|docker/*)
                 return 0  # True - this is a system path
@@ -416,8 +416,8 @@ create_volume_args() {
     print_verbose "Base mount added, checking for exclusions..."
     
     # Try to use cached exclusion lists if available
-    local cache_file="$project_path/.nyarlathotia/.excluded-files.cache"
-    local config_file="$project_path/.nyarlathotia/exclusions.conf"
+    local cache_file="$project_path/.nyiakeeper/.excluded-files.cache"
+    local config_file="$project_path/.nyiakeeper/exclusions.conf"
     
     # Check if cache is valid using the correct validation function
     if declare -f is_exclusions_cache_valid >/dev/null 2>&1 && is_exclusions_cache_valid "$project_path"; then
@@ -472,9 +472,9 @@ create_volume_args() {
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
 
-                # Skip if this is a NyarlathotIA system directory
-                if is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    print_verbose "Skipping NyarlathotIA system directory: $rel_path"
+                # Skip if this is a Nyia Keeper system directory
+                if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                    print_verbose "Skipping Nyia Keeper system directory: $rel_path"
                     continue
                 fi
 
@@ -492,9 +492,9 @@ create_volume_args() {
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
 
-                # Skip if this is a NyarlathotIA system file
-                if is_nyarlathotia_system_path "$rel_path" "$project_path"; then
-                    print_verbose "Skipping NyarlathotIA system file: $rel_path"
+                # Skip if this is a Nyia Keeper system file
+                if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                    print_verbose "Skipping Nyia Keeper system file: $rel_path"
                     continue
                 fi
 
@@ -569,9 +569,9 @@ append_repo_volume_args() {
     # Add base mount for this repo (does NOT clear VOLUME_ARGS)
     VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:rw")
 
-    # Apply exclusions from this repo's .nyarlathotia/exclusions.conf if it exists
-    if [[ -f "$repo_path/.nyarlathotia/exclusions.conf" ]]; then
-        print_verbose "Applying exclusions from: $repo_path/.nyarlathotia/exclusions.conf"
+    # Apply exclusions from this repo's .nyiakeeper/exclusions.conf if it exists
+    if [[ -f "$repo_path/.nyiakeeper/exclusions.conf" ]]; then
+        print_verbose "Applying exclusions from: $repo_path/.nyiakeeper/exclusions.conf"
 
         # Get exclusion patterns for this repo
         local patterns
@@ -587,8 +587,8 @@ append_repo_volume_args() {
                 while IFS= read -r -d '' match; do
                     local rel_path="${match#$repo_path/}"
 
-                    # Skip NyarlathotIA system paths
-                    if is_nyarlathotia_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                    # Skip Nyia Keeper system paths
+                    if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
                         continue
                     fi
 

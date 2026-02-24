@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 # Cache utilities for exclusions system
 # Provides caching functionality to speed up repeated exclusion scans
 
@@ -10,7 +10,7 @@ CACHE_TTL="${NYIA_CACHE_TTL:-30}"
 # Get exclusions config modification time
 get_exclusions_config_mtime() {
     local project_path="$1"
-    local conf_file="$project_path/.nyarlathotia/exclusions.conf"
+    local conf_file="$project_path/.nyiakeeper/exclusions.conf"
     
     if [[ -f "$conf_file" ]]; then
         stat -c %Y "$conf_file" 2>/dev/null || stat -f %m "$conf_file" 2>/dev/null || echo 0
@@ -22,8 +22,8 @@ get_exclusions_config_mtime() {
 # Check if exclusions cache is valid for a project
 is_exclusions_cache_valid() {
     local project_path="$1"
-    local cache_file="$project_path/.nyarlathotia/.excluded-files.cache"
-    local cache_meta="$project_path/.nyarlathotia/.cache-meta"
+    local cache_file="$project_path/.nyiakeeper/.excluded-files.cache"
+    local cache_meta="$project_path/.nyiakeeper/.cache-meta"
     
     # Cache file must exist
     [[ -f "$cache_file" ]] || return 1
@@ -51,11 +51,11 @@ is_exclusions_cache_valid() {
 # Write exclusions to cache
 write_exclusions_cache() {
     local project_path="$1"
-    local cache_file="$project_path/.nyarlathotia/.excluded-files.cache"
-    local cache_meta="$project_path/.nyarlathotia/.cache-meta"
+    local cache_file="$project_path/.nyiakeeper/.excluded-files.cache"
+    local cache_meta="$project_path/.nyiakeeper/.cache-meta"
     
-    # Ensure .nyarlathotia directory exists
-    local nyia_dir="$project_path/.nyarlathotia"
+    # Ensure .nyiakeeper directory exists
+    local nyia_dir="$project_path/.nyiakeeper"
     [[ -d "$nyia_dir" ]] || mkdir -p "$nyia_dir"
     
     # Build comma-separated lists from associative arrays

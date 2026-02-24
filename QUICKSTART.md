@@ -1,4 +1,4 @@
-# NyarlathotIA Quick Start
+# Nyia Keeper Quick Start
 
 Get up and running with AI-powered development assistants in under 2 minutes.
 
@@ -6,13 +6,13 @@ Get up and running with AI-powered development assistants in under 2 minutes.
 
 ### Linux
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install.sh | bash
-source ~/.config/nyarlathotia/env
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/install.sh | bash
+source ~/.config/nyiakeeper/env
 ```
 
 ### macOS
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/scripts/install-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/scripts/install-macos.sh | bash
 ```
 See [macOS Setup Guide](docs/MACOS_SETUP.md) for Docker Desktop installation and troubleshooting.
 
@@ -66,7 +66,7 @@ nyia-claude                  # Or nyia-gemini, nyia-codex, etc.
 
 ## Branch Management
 
-By default, NyarlathotIA creates timestamped branches for your work:
+By default, Nyia Keeper creates timestamped branches for your work:
 
 ```bash
 nyia-claude                    # Creates: claude-2026-01-11-143052
@@ -90,7 +90,7 @@ All assistants include 4 built-in skills (following the [Agent Skills](https://a
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
-| **kickoff** | `/kickoff` | Start a session - reconstructs state from `.nyarlathotia/` files |
+| **kickoff** | `/kickoff` | Start a session - reconstructs state from `.nyiakeeper/` files |
 | **do-a-plan** | `/do-a-plan` | Create a phased execution plan with atomic steps |
 | **pair-review** | `/pair-review` | Architect-level review between agents (e.g., Claude reviews Codex's plan) |
 | **checkpoint** | `/checkpoint` | Save session state before context compaction or shutdown |
@@ -101,9 +101,9 @@ Skills are invoked as slash commands within your assistant session.
 
 ```bash
 # Custom image overlays
-mkdir -p ~/.config/nyarlathotia/claude/overlay
-cat > ~/.config/nyarlathotia/claude/overlay/Dockerfile << 'EOF'
-FROM ghcr.io/kaizendofr/nyarlathotia-claude:latest
+mkdir -p ~/.config/nyiakeeper/claude/overlay
+cat > ~/.config/nyiakeeper/claude/overlay/Dockerfile << 'EOF'
+FROM ghcr.io/kaizendofr/nyiakeeper-claude:latest
 RUN apt-get update && apt-get install -y python3-dev build-essential
 EOF
 
@@ -123,7 +123,7 @@ open -a Docker                  # macOS
 **Authentication Problems:**
 ```bash
 # Reset credentials
-rm -rf ~/.config/nyarlathotia/creds/
+rm -rf ~/.config/nyiakeeper/creds/
 nyia-claude --login
 ```
 
@@ -136,9 +136,9 @@ newgrp docker
 
 ## What's Next?
 
-- **Full Documentation**: [GitHub Repository](https://github.com/KaizendoFr/nyarlathotia)
+- **Full Documentation**: [GitHub Repository](https://github.com/KaizendoFr/nyia-keeper)
 - **Advanced Usage**: `nyia-claude --help`
-- **Custom Overlays**: Check `~/.config/nyarlathotia/claude/overlay/`
+- **Custom Overlays**: Check `~/.config/nyiakeeper/claude/overlay/`
 - **macOS Setup**: [docs/MACOS_SETUP.md](docs/MACOS_SETUP.md)
 
 ---

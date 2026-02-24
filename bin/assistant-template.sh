@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
-# NyarlathotIA Assistant Template
+# Nyia Keeper Assistant Template
 # Generic wrapper for all AI assistants - source this with ASSISTANT_CONFIG set
 
 set -e
@@ -26,7 +26,7 @@ fi
 if [[ ! -f "$ASSISTANT_CONFIG" ]]; then
     # Docker-style fallback: check default location if user-specified path fails
     assistant_name=$(basename "$ASSISTANT_CONFIG" .conf)
-    nyia_home=$(get_nyarlathotia_home 2>/dev/null)
+    nyia_home=$(get_nyiakeeper_home 2>/dev/null)
     default_config="$nyia_home/config/${assistant_name}.conf"
     
     if [[ -f "$default_config" ]]; then
@@ -72,7 +72,7 @@ for var in ASSISTANT_NAME ASSISTANT_CLI BASE_IMAGE_NAME DOCKERFILE_PATH CONTEXT_
     fi
 done
 
-# Assistant-specific directories are created by get_nyarlathotia_home() -> generate_default_assistant_configs()
+# Assistant-specific directories are created by get_nyiakeeper_home() -> generate_default_assistant_configs()
 
 # === MAIN EXECUTION ===
 main() {
@@ -112,7 +112,7 @@ main() {
     # Auto-initialize exclusions system on first run (Git-style behavior)
     # Only if exclusions are enabled and config doesn't exist
     if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
-        if [[ ! -f "$PROJECT_PATH/.nyarlathotia/exclusions.conf" ]]; then
+        if [[ ! -f "$PROJECT_PATH/.nyiakeeper/exclusions.conf" ]]; then
             # Load exclusions library to get init function
             local exclusions_lib="$script_dir/../lib/exclusions-commands.sh"
             if [[ -f "$exclusions_lib" ]]; then
@@ -125,7 +125,7 @@ main() {
                 export VERBOSE="$old_verbose"
                 
                 if [[ "$VERBOSE" == "true" ]]; then
-                    print_info "Auto-initialized exclusions system: .nyarlathotia/exclusions.conf"
+                    print_info "Auto-initialized exclusions system: .nyiakeeper/exclusions.conf"
                 fi
             else
                 print_error "Failed to load exclusions library: $exclusions_lib"
@@ -178,7 +178,7 @@ main() {
     # Handle version
     if [[ "$SHOW_VERSION" == "true" ]]; then
         local version=$(get_installed_version)
-        echo "NyarlathotIA version: $version"
+        echo "Nyia Keeper version: $version"
         exit 0
     fi
 
@@ -206,6 +206,20 @@ main() {
         exit 0
     fi
 
+    # Handle list agents mode (info-only, host-side resolution) - Plan 149
+    if [[ "$LIST_AGENTS" == "true" ]]; then
+        local agent_lib="$script_dir/../lib/agent-resolution.sh"
+        if [[ -f "$agent_lib" ]]; then
+            source "$agent_lib"
+            local nyiakeeper_home
+            nyiakeeper_home=$(get_nyiakeeper_home)
+            list_agents "$ASSISTANT_CLI" "$PROJECT_PATH" "$nyiakeeper_home"
+        else
+            echo "Agent resolution library not found" >&2
+        fi
+        exit 0
+    fi
+
     
     # Handle custom image build (end-user power feature)
     if [[ "$BUILD_CUSTOM_IMAGE" == "true" ]]; then
@@ -222,7 +236,7 @@ main() {
     # Handle interactive setup mode (OpenCode model selection)
     if [[ "$SETUP_MODE" == "true" ]]; then
         if [[ "$ASSISTANT_CLI" == "opencode" ]]; then
-            "$NYARLATHOTIA_HOME/bin/opencode-setup.sh"
+            "$NYIAKEEPER_HOME/bin/opencode-setup.sh"
             exit $?
         else
             print_error "Interactive setup is only available for OpenCode assistant"
@@ -232,7 +246,7 @@ main() {
 
 
     # Source credentials if available
-    local creds_file="$PROJECT_PATH/.nyarlathotia/creds/env"
+    local creds_file="$PROJECT_PATH/.nyiakeeper/creds/env"
     if [[ -f "$creds_file" ]]; then
         source "$creds_file"
         print_verbose "Loaded credentials from $creds_file"
@@ -276,9 +290,9 @@ main() {
 
 # === STATUS DISPLAY ===
 show_assistant_status() {
-    local nyarlathotia_home=$(get_nyarlathotia_home)
+    local nyiakeeper_home=$(get_nyiakeeper_home)
     
-    echo "NyarlathotIA ${config_assistant_name} Status:"
+    echo "Nyia Keeper ${config_assistant_name} Status:"
     echo "  Project: $(basename "$PROJECT_PATH")"
     echo "  Path: $PROJECT_PATH"
     echo "  Branch: $(get_current_branch)"
@@ -300,47 +314,67 @@ show_assistant_status() {
     echo "  Selected image: $selected_image"
     echo "  Context dir: $PROJECT_PATH/$CONTEXT_DIR_NAME"
     
-    # Show available images
+    # Show available images (convert dash-form config name to slash-form)
+    local _clean="${BASE_IMAGE_NAME#nyiakeeper-}"
+    local _search="nyiakeeper/${_clean}"
     echo "  Available images:"
-    if command -v docker >/dev/null && docker images --filter "reference=${BASE_IMAGE_NAME}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q . 2>/dev/null; then
-        docker images --filter "reference=${BASE_IMAGE_NAME}*" --format "    {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})" 2>/dev/null
+    if command -v docker >/dev/null && docker images --filter "reference=${_search}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" 2>/dev/null | tail -n +2 | grep -q . 2>/dev/null; then
+        docker images --filter "reference=${_search}*" --format "    {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})" 2>/dev/null
     else
         echo "    No images found - run nyia-${config_assistant_name} --build-custom-image to create custom overlay"
     fi
     
+    # Show command approval mode (Plan 145)
+    echo ""
+    echo "=== Command Approval Mode ==="
+    local _policy_lib=""
+    _policy_lib="$HOME/.local/lib/nyiakeeper/command-policy.sh"
+    if [[ -f "$_policy_lib" ]]; then
+        source "$_policy_lib"
+        local _mode_result
+        _mode_result=$(resolve_command_mode "$config_assistant_name" "$PROJECT_PATH")
+        local _eff_mode="${_mode_result%%	*}"
+        local _eff_source="${_mode_result#*	}"
+        echo "  Effective mode: $_eff_mode"
+        echo "  Source: $_eff_source"
+        echo "  Manage: nyia config view $config_assistant_name"
+    else
+        echo "  (command-policy module not found)"
+    fi
+
     # Show Docker overlays
     echo ""
     echo "=== Docker Overlays ==="
-    # Extract just assistant name (remove nyarlathotia- prefix if present) 
-    local assistant_name=$(basename "$BASE_IMAGE_NAME" | cut -d: -f1 | sed 's/^nyarlathotia-//')
+    # Extract just assistant name (remove nyiakeeper- prefix if present) 
+    local assistant_name=$(basename "$BASE_IMAGE_NAME" | cut -d: -f1 | sed 's/^nyiakeeper-//')
     
     # Check user overlay
-    local user_overlay="$HOME/.config/nyarlathotia/$assistant_name/overlay/Dockerfile"
+    local user_overlay="$HOME/.config/nyiakeeper/$assistant_name/overlay/Dockerfile"
     if [[ -f "$user_overlay" ]]; then
         echo "  User overlay: FOUND"
         echo "    Path: $user_overlay"
     else
         echo "  User overlay: Not configured"
-        echo "    Create at: ~/.config/nyarlathotia/$assistant_name/overlay/Dockerfile"
+        echo "    Create at: ~/.config/nyiakeeper/$assistant_name/overlay/Dockerfile"
     fi
     
     # Check project overlay
-    local project_overlay="$PROJECT_PATH/.nyarlathotia/$assistant_name/overlay/Dockerfile"
+    local project_overlay="$PROJECT_PATH/.nyiakeeper/$assistant_name/overlay/Dockerfile"
     if [[ -f "$project_overlay" ]]; then
         echo "  Project overlay: FOUND"
         echo "    Path: $project_overlay"
     else
         echo "  Project overlay: Not configured"
-        echo "    Create at: .nyarlathotia/$assistant_name/overlay/Dockerfile"
+        echo "    Create at: .nyiakeeper/$assistant_name/overlay/Dockerfile"
     fi
     
     # Show prompt customization status
     echo ""
     echo "=== Prompt Customization ==="
-    echo "  Directory: ~/.config/nyarlathotia/prompts/"
+    echo "  Directory: ~/.config/nyiakeeper/prompts/"
 
     # Check for active overrides
-    local prompts_dir="$nyarlathotia_home/prompts"
+    local prompts_dir="$nyiakeeper_home/prompts"
     local active_count=0
 
     if [[ -f "$prompts_dir/base-overrides.md" ]]; then
@@ -353,12 +387,12 @@ show_assistant_status() {
         ((active_count++)) || true
     fi
 
-    if [[ -f "$PROJECT_PATH/.nyarlathotia/prompts/project-overrides.md" ]]; then
+    if [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/project-overrides.md" ]]; then
         echo "  ✓ Project overrides active"
         ((active_count++)) || true
     fi
 
-    if [[ -f "$PROJECT_PATH/.nyarlathotia/prompts/${config_assistant_name}-project.md" ]]; then
+    if [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/${config_assistant_name}-project.md" ]]; then
         echo "  ✓ Project ${config_assistant_name}-specific overrides active"
         ((active_count++)) || true
     fi
@@ -373,7 +407,7 @@ show_assistant_status() {
     echo "=== Overlay Documentation ==="
     echo "Create custom Dockerfile at overlay location:"
     local registry=$(get_docker_registry)
-    echo "  FROM ${registry}/nyarlathotia-${assistant_name}:latest"
+    echo "  FROM ${registry}/nyiakeeper-${assistant_name}:latest"
     echo "  RUN apt-get update && apt-get install -y your-tools"
     echo ""
     echo "Then build: nyia-$assistant_name --build-custom-image"

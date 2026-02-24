@@ -1,4 +1,4 @@
-# NyarlathotIA Claude Assistant Configuration
+# Nyia Keeper Claude Assistant Configuration
 # Professional configuration for the Claude AI assistant
 
 # === ASSISTANT IDENTITY ===
@@ -6,7 +6,7 @@ ASSISTANT_NAME="claude"
 ASSISTANT_CLI="claude"
 
 # === DOCKER CONFIGURATION ===
-BASE_IMAGE_NAME="nyarlathotia-claude"  # Base name without tag
+BASE_IMAGE_NAME="nyiakeeper-claude"  # Base name without tag
 DOCKERFILE_PATH="docker/claude"
 CONFIG_FILENAME="CLAUDE.md"
 DEFAULT_USER="node"
@@ -17,8 +17,8 @@ ALLOW_DEV_IMAGES="true"
 FORCE_PRODUCTION="false"
 
 # === PROJECT CONTEXT ===
-CONTEXT_DIR_NAME=".nyarlathotia/claude"
-CONFIG_DIR_NAME=".nyarlathotia/claude"
+CONTEXT_DIR_NAME=".nyiakeeper/claude"
+CONFIG_DIR_NAME=".nyiakeeper/claude"
 
 
 # === AUTHENTICATION ===

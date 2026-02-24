@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
-# NyarlathotIA Centralized CLI Parser
+# Nyia Keeper Centralized CLI Parser
 # Single source of truth for all CLI argument parsing and help system
 
 set -e
@@ -49,6 +49,13 @@ export LIST_IMAGES="false"
 export DOCKER_IMAGE=""
 export FLAVOR=""
 export LIST_FLAVORS="false"
+
+# Agent persona selection (Plan 149)
+export NYIA_AGENT=""
+export LIST_AGENTS="false"
+
+# Command approval mode (Plan 145)
+export NYIA_COMMAND_MODE_CLI=""
 
 # Mount exclusions flags (simplified)
 export DISABLE_EXCLUSIONS="false"
@@ -153,6 +160,9 @@ get_assistant_arg_desc() {
         "--set-api-key") echo "Helper to set OpenAI API key for team plan users" ;;
         "--disable-exclusions") echo "Disable mount exclusions for this session" ;;
         "--prompt,-p") echo "Explicit user prompt (required for non-interactive mode)" ;;
+        "--agent") echo "Select agent persona for this session (e.g., reviewer, planner)" ;;
+        "--list-agents") echo "List available agent personas for this assistant" ;;
+        "--command-mode") echo "Set command approval mode for this session (safe or full)" ;;
         "--rag") echo "Enable RAG codebase search (requires Ollama + NYIA_RAG_MODEL in config)" ;;
         "--rag-verbose") echo "Enable verbose debug logging for RAG indexing" ;;
         *) echo "" ;;
@@ -161,7 +171,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --rag --rag-verbose"
+    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --agent --list-agents --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -169,7 +179,7 @@ get_dispatcher_arg_desc() {
     case "$1" in
         "config") echo "Configuration management (list, dump, view, get)" ;;
         "list") echo "List all available assistants" ;;
-        "status") echo "Show global NyarlathotIA status" ;;
+        "status") echo "Show global Nyia Keeper status" ;;
         "exclusions") echo "Manage mount exclusions for security" ;;
         *) echo "" ;;
     esac
@@ -185,7 +195,7 @@ show_dispatcher_help() {
     local script_name="$1"
     
     cat << EOF
-NyarlathotIA Multi-Assistant Infrastructure - "I whisper in code. You commit in fear."
+Nyia Keeper Multi-Assistant Infrastructure - "I whisper in code. You commit in fear."
 
 Usage:
   $script_name <command>                    # System management commands
@@ -238,27 +248,27 @@ Prompt Customization:
 
   Setup:
     # Directory auto-created on first run
-    # Examples: ~/.config/nyarlathotia/prompts/*.example
+    # Examples: ~/.config/nyiakeeper/prompts/*.example
 
   Quick activation:
     # Global customizations (all assistants)
-    cp ~/.config/nyarlathotia/prompts/base-overrides.md.example \\
-       ~/.config/nyarlathotia/prompts/base-overrides.md
+    cp ~/.config/nyiakeeper/prompts/base-overrides.md.example \\
+       ~/.config/nyiakeeper/prompts/base-overrides.md
 
     # ${assistant_name}-specific customizations
-    cp ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md.example \\
-       ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
+    cp ~/.config/nyiakeeper/prompts/${assistant_name}-overrides.md.example \\
+       ~/.config/nyiakeeper/prompts/${assistant_name}-overrides.md
 
     # Edit and test
-    nano ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
+    nano ~/.config/nyiakeeper/prompts/${assistant_name}-overrides.md
     nyia-${assistant_name} -p "test prompt" --verbose
 
   Customization levels:
-    Global: ~/.config/nyarlathotia/prompts/base-overrides.md
-    ${assistant_name}: ~/.config/nyarlathotia/prompts/${assistant_name}-overrides.md
-    Project: .nyarlathotia/prompts/{project,${assistant_name}}-overrides.md
+    Global: ~/.config/nyiakeeper/prompts/base-overrides.md
+    ${assistant_name}: ~/.config/nyiakeeper/prompts/${assistant_name}-overrides.md
+    Project: .nyiakeeper/prompts/{project,${assistant_name}}-overrides.md
 
-  Documentation: ~/.config/nyarlathotia/prompts/README.md
+  Documentation: ~/.config/nyiakeeper/prompts/README.md
 EOF
 }
 
@@ -279,7 +289,7 @@ show_assistant_help() {
     fi
     
     cat << EOF
-NyarlathotIA ${assistant_name} Assistant - "I whisper in code. You commit in fear."
+Nyia Keeper ${assistant_name} Assistant - "I whisper in code. You commit in fear."
 
 Usage:
   nyia-${assistant_name}                      # Interactive session
@@ -292,7 +302,7 @@ Quick Start:
   nyia-${assistant_name} --build-custom-image  # Build with your overlays
 
 Power User Overlays:
-  Create overlay at: ~/.config/nyarlathotia/${assistant_name}/overlay/Dockerfile
+  Create overlay at: ~/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile
   Then run: nyia-${assistant_name} --build-custom-image
   
   Example overlay content:
@@ -319,12 +329,12 @@ EOF
     cat << EOF
 
   Setup overlay from template:
-    cp docker/overlay-templates/python-latest/Dockerfile ~/.config/nyarlathotia/${assistant_name}/overlay/
+    cp docker/overlay-templates/python-latest/Dockerfile ~/.config/nyiakeeper/${assistant_name}/overlay/
     nyia-${assistant_name} --build
   
   Overlay locations (applied in order):
-    1. User config: ~/.config/nyarlathotia/${assistant_name}/overlay/Dockerfile
-    2. Project: ./.nyarlathotia/${assistant_name}/overlay/Dockerfile
+    1. User config: ~/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile
+    2. Project: ./.nyiakeeper/${assistant_name}/overlay/Dockerfile
 
 Operations:
   -p, --prompt "text"      # Send prompt to assistant
@@ -335,8 +345,15 @@ Operations:
   -w, --work-branch <name> # Reuse existing work branch
   --base-branch <name>     # Specify Git base branch
 
+Agent Personas:
+  --agent <name>           # Select agent persona for this session
+  --list-agents            # List available agent personas
+
+Command Approval Mode:
+  --command-mode <mode>    # Set mode: safe (default) or full
+
 Workspace Mode (Multi-Repository):
-  Create .nyarlathotia/workspace.conf with repo paths (one per line)
+  Create .nyiakeeper/workspace.conf with repo paths (one per line)
   Workspace is auto-detected; repos mounted at /project/{hash}/repos/
   Same branch created on all workspace repos for coordinated work
   RAG disabled in workspace mode (multi-repo indexing not yet supported)
@@ -381,8 +398,8 @@ EOF
     echo "  # End-user examples:"
     local registry=$(get_docker_registry)
     cat << EOF
-  cat > ~/.config/nyarlathotia/${assistant_name}/overlay/Dockerfile << 'OVERLAY'
-FROM ${registry}/nyarlathotia-${assistant_name}:latest
+  cat > ~/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile << 'OVERLAY'
+FROM ${registry}/nyiakeeper-${assistant_name}:latest
 RUN apt-get update && apt-get install -y your-tools
 OVERLAY
   nyia-${assistant_name} --build-custom-image  # Build custom image
@@ -596,6 +613,38 @@ parse_assistant_args() {
                     exit 1
                 fi
                 ;;
+            --agent)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --agent requires an agent name" >&2
+                    echo "Usage: --agent <name>" >&2
+                    echo "Run --list-agents to see available agents" >&2
+                    exit 1
+                fi
+                if ! validate_agent_name "$2"; then
+                    exit 1
+                fi
+                export NYIA_AGENT="$2"
+                shift 2
+                ;;
+            --list-agents)
+                export LIST_AGENTS="true"
+                shift
+                ;;
+            --command-mode)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --command-mode requires a value (safe or full)" >&2
+                    exit 1
+                fi
+                case "$2" in
+                    safe|full) ;;
+                    *)
+                        echo "Error: Invalid command mode '$2'. Valid values: safe, full" >&2
+                        exit 1
+                        ;;
+                esac
+                export NYIA_COMMAND_MODE_CLI="$2"
+                shift 2
+                ;;
             --rag)
                 export ENABLE_RAG="true"
                 shift
@@ -619,6 +668,7 @@ parse_assistant_args() {
                     echo "  --path <dir>         Work on different project directory" >&2
                     echo "  --prompt, -p <text>  Explicit user prompt" >&2
                     echo "  --verbose, -v        Enable verbose output" >&2
+                    echo "  --command-mode <m>   Set command mode: safe (default) or full" >&2
                     echo "  --help, -h           Show help" >&2
                     
                     echo "" >&2
@@ -690,6 +740,8 @@ parse_args() {
     export SET_API_KEY="false"
     export SETUP_MODE="false"
     export LIST_FLAVORS="false"
+    export NYIA_AGENT=""
+    export LIST_AGENTS="false"
     export DISABLE_EXCLUSIONS="false"
     export PROJECT_PATH=""
     export FLAVOR=""
@@ -744,7 +796,7 @@ validate_args() {
 
 
     # Info-only flags bypass build validation (they exit before any build runs)
-    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" ]]; then
+    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" || "$LIST_AGENTS" == "true" ]]; then
         return 0
     fi
 
@@ -898,6 +950,9 @@ debug_args() {
         echo "COMMAND: $COMMAND" >&2
         echo "ASSISTANT_NAME: $ASSISTANT_NAME" >&2
         echo "USER_PROMPT: $USER_PROMPT" >&2
+        echo "NYIA_AGENT: $NYIA_AGENT" >&2
+        echo "LIST_AGENTS: $LIST_AGENTS" >&2
+        echo "NYIA_COMMAND_MODE_CLI: $NYIA_COMMAND_MODE_CLI" >&2
         echo "ENABLE_RAG: $ENABLE_RAG" >&2
         echo "NYIA_RAG_MODEL: ${NYIA_RAG_MODEL:-<from config>}" >&2
         echo "REMAINING_ARGS: ${REMAINING_ARGS[*]}" >&2

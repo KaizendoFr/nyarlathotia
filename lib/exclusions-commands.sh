@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 # Exclusions subcommand implementations for nyia
 # Provides commands for managing mount exclusions
 
@@ -51,7 +51,7 @@ get_project_path() {
 # Read cached exclusion lists
 read_cached_exclusions() {
     local project_path="$1"
-    local cache_file="$project_path/.nyarlathotia/.excluded-files.cache"
+    local cache_file="$project_path/.nyiakeeper/.excluded-files.cache"
     
     # Initialize arrays
     CACHED_EXCLUDED_FILES=()
@@ -141,8 +141,8 @@ exclusions_list() {
     else
         # Cache invalid or doesn't exist - scan filesystem
         
-        # Source mount-exclusions to get is_nyarlathotia_system_path function
-        if declare -f is_nyarlathotia_system_path >/dev/null 2>&1; then
+        # Source mount-exclusions to get is_nyiakeeper_system_path function
+        if declare -f is_nyiakeeper_system_path >/dev/null 2>&1; then
             : # Function already available
         elif [[ -f "$(dirname "${BASH_SOURCE[0]}")/mount-exclusions.sh" ]]; then
             source "$(dirname "${BASH_SOURCE[0]}")/mount-exclusions.sh"
@@ -162,8 +162,8 @@ exclusions_list() {
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
                 
-                # Check if this is a NyarlathotIA system file
-                if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
+                # Check if this is a Nyia Keeper system file
+                if declare -f is_nyiakeeper_system_path >/dev/null 2>&1 && is_nyiakeeper_system_path "$rel_path" "$project_path"; then
                     if [[ -z "${system_files[$rel_path]:-}" ]]; then
                         system_files["$rel_path"]=1
                         system_files_count=$((system_files_count + 1))
@@ -184,8 +184,8 @@ exclusions_list() {
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
                 
-                # Check if this is a NyarlathotIA system directory
-                if declare -f is_nyarlathotia_system_path >/dev/null 2>&1 && is_nyarlathotia_system_path "$rel_path" "$project_path"; then
+                # Check if this is a Nyia Keeper system directory
+                if declare -f is_nyiakeeper_system_path >/dev/null 2>&1 && is_nyiakeeper_system_path "$rel_path" "$project_path"; then
                     if [[ -z "${system_dirs[$rel_path]:-}" ]]; then
                         system_dirs["$rel_path"]=1
                         system_dirs_count=$((system_dirs_count + 1))
@@ -225,10 +225,10 @@ exclusions_list() {
         done | sort
     fi
     
-    # Show NyarlathotIA system files if any (not excluded)
+    # Show Nyia Keeper system files if any (not excluded)
     if [[ $system_files_count -gt 0 || $system_dirs_count -gt 0 ]]; then
         echo ""
-        echo "NyarlathotIA system files (NOT excluded - needed for operation):"
+        echo "Nyia Keeper system files (NOT excluded - needed for operation):"
         if [[ $system_files_count -gt 0 ]]; then
             for file in "${!system_files[@]}"; do
                 echo "  ✅ $file"
@@ -250,7 +250,7 @@ exclusions_list() {
     else
         print_info "Excluded: $excluded_files_count files, $excluded_dirs_count directories"
         if [[ $total_system -gt 0 ]]; then
-            print_info "Protected NyarlathotIA system: $system_files_count files, $system_dirs_count directories"
+            print_info "Protected Nyia Keeper system: $system_files_count files, $system_dirs_count directories"
         fi
     fi
 }
@@ -312,7 +312,7 @@ exclusions_status() {
     echo ""
     echo "Global Settings:"
     echo "  Feature enabled: ${ENABLE_MOUNT_EXCLUSIONS:-true}"
-    echo "  Config file: $(get_nyarlathotia_home)/config/mount-exclusions.conf"
+    echo "  Config file: $(get_nyiakeeper_home)/config/mount-exclusions.conf"
     echo ""
     
     echo "Current Status:"
@@ -324,7 +324,7 @@ exclusions_status() {
     echo ""
     
     echo "Project Path: $project_path"
-    local project_exclusions="$project_path/.nyarlathotia/exclusions.conf"
+    local project_exclusions="$project_path/.nyiakeeper/exclusions.conf"
     if [[ -f "$project_exclusions" ]]; then
         echo "  📄 Has project-specific exclusions: $project_exclusions"
     else
@@ -350,7 +350,7 @@ exclusions_patterns() {
     echo ""
     print_info "These patterns are hardcoded for security"
     print_info "To modify: edit lib/mount-exclusions.sh functions"
-    print_info "To override: use .nyarlathotia/exclusions.conf with ! prefix"
+    print_info "To override: use .nyiakeeper/exclusions.conf with ! prefix"
 }
 
 # Initialize project-specific exclusions config
@@ -376,13 +376,13 @@ exclusions_init() {
     
     # Get validated project path
     project_path=$(get_project_path "$project_path")
-    local nyia_dir="$project_path/.nyarlathotia"
+    local nyia_dir="$project_path/.nyiakeeper"
     local exclusions_file="$nyia_dir/exclusions.conf"
     
     # If file exists and not forcing, show status (Git/Terraform style)
     if [[ -f "$exclusions_file" ]] && [[ "$force_mode" != "true" ]]; then
         print_info "Exclusions already initialized"
-        echo "Current config: .nyarlathotia/exclusions.conf"
+        echo "Current config: .nyiakeeper/exclusions.conf"
         
         # Count user-defined patterns
         local user_pattern_count=$(grep -v '^#' "$exclusions_file" 2>/dev/null | grep -v '^[[:space:]]*$' | wc -l)
@@ -540,16 +540,16 @@ EOF
     echo "Project: $project_path"
     echo ""
     
-    # Create .nyarlathotia directory if needed
+    # Create .nyiakeeper directory if needed
     if [[ ! -d "$nyia_dir" ]]; then
         mkdir -p "$nyia_dir"
-        print_success "Created .nyarlathotia directory"
+        print_success "Created .nyiakeeper directory"
     fi
     
     # Create exclusions.conf (always if forcing or doesn't exist)
     if [[ ! -f "$exclusions_file" ]] || [[ "$force_mode" == "true" ]]; then
         cat > "$exclusions_file" << 'EOF'
-# NyarlathotIA Mount Exclusions Configuration
+# Nyia Keeper Mount Exclusions Configuration
 # Project-specific patterns to exclude from Docker mounts
 #
 # Patterns support glob syntax: * ? []
@@ -572,9 +572,9 @@ EOF
 
 EOF
         if [[ "$force_mode" == "true" ]]; then
-            print_success "Created fresh exclusions config: .nyarlathotia/exclusions.conf"
+            print_success "Created fresh exclusions config: .nyiakeeper/exclusions.conf"
         else
-            print_success "Created exclusions config: .nyarlathotia/exclusions.conf"
+            print_success "Created exclusions config: .nyiakeeper/exclusions.conf"
         fi
         
         # Show immediate value - use cached results from complete scan
@@ -666,7 +666,7 @@ EOF
         echo ""
         echo "Next steps:"
         echo "  1. Run 'nyia exclusions list' to see all protected files"
-        echo "  2. Edit .nyarlathotia/exclusions.conf to add project-specific patterns"
+        echo "  2. Edit .nyiakeeper/exclusions.conf to add project-specific patterns"
         echo "  3. Run 'nyia exclusions test' to verify exclusions work"
     fi
 }
@@ -674,7 +674,7 @@ EOF
 # Show help for exclusions commands
 exclusions_help() {
     cat << 'EOF'
-NyarlathotIA Mount Exclusions Management
+Nyia Keeper Mount Exclusions Management
 
 Security feature that prevents sensitive files from being exposed to AI assistants
 by replacing them with explanation files in Docker containers.
@@ -717,7 +717,7 @@ To disable exclusions temporarily:
   Or use: nyia-claude --disable-exclusions "your prompt"
 
 To disable globally:
-  Edit $(get_nyarlathotia_home)/config/mount-exclusions.conf
+  Edit $(get_nyiakeeper_home)/config/mount-exclusions.conf
   Set: ENABLE_MOUNT_EXCLUSIONS=false
 
 EOF

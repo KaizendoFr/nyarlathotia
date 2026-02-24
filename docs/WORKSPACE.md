@@ -1,13 +1,13 @@
 # Workspace Mode - Multi-Repository Support
 
-Workspace mode allows a single NyarlathotIA session to work across multiple related repositories simultaneously.
+Workspace mode allows a single Nyia Keeper session to work across multiple related repositories simultaneously.
 
 ## Quick Start
 
 1. Create a workspace configuration file:
 ```bash
-mkdir -p .nyarlathotia
-cat > .nyarlathotia/workspace.conf << 'EOF'
+mkdir -p .nyiakeeper
+cat > .nyiakeeper/workspace.conf << 'EOF'
 # Paths to additional repositories (one per line)
 ~/projects/shared-library
 ~/projects/api-client
@@ -22,7 +22,7 @@ nyia-claude -p "Help me integrate the shared-library into this project"
 
 ## Configuration File Format
 
-The `.nyarlathotia/workspace.conf` file uses a simple line-based format:
+The `.nyiakeeper/workspace.conf` file uses a simple line-based format:
 
 ```
 # Comments start with #
@@ -65,9 +65,9 @@ The same branch name is used across all repositories in the workspace, making it
 
 Each repository can have its own exclusions:
 ```
-repo1/.nyarlathotia/exclusions.conf   # Applied to repo1 mount
-repo2/.nyarlathotia/exclusions.conf   # Applied to repo2 mount
-workspace/.nyarlathotia/exclusions.conf  # Applied to main workspace
+repo1/.nyiakeeper/exclusions.conf   # Applied to repo1 mount
+repo2/.nyiakeeper/exclusions.conf   # Applied to repo2 mount
+workspace/.nyiakeeper/exclusions.conf  # Applied to main workspace
 ```
 
 Built-in security exclusions (`.env`, `.key`, `.pem`, etc.) are applied to all mounts.
@@ -87,7 +87,7 @@ Warning: RAG disabled in workspace mode (multi-repo indexing not yet supported)
 - Commits made by the assistant go to the workspace repo
 
 ### Branch Synchronization
-When you start a workspace session, NyarlathotIA:
+When you start a workspace session, Nyia Keeper:
 1. Captures the current branch of all repositories (main + workspace repos)
 2. Creates the work branch on the main project (e.g., `claude-2025-01-15-143025`)
 3. **Automatically creates the same branch on ALL workspace repositories**

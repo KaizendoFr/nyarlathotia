@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
 # Workspace mode functions for multi-repository support
 # This module provides functions to detect, parse, and manage workspace configurations
-# that allow a single NyarlathotIA session to work across multiple related repositories.
+# that allow a single Nyia Keeper session to work across multiple related repositories.
 
 # === WORKSPACE DETECTION ===
 
@@ -12,7 +12,7 @@
 # Usage: is_workspace [project_path]
 is_workspace() {
     local project_path="${1:-$(pwd)}"
-    [[ -f "$project_path/.nyarlathotia/workspace.conf" ]]
+    [[ -f "$project_path/.nyiakeeper/workspace.conf" ]]
 }
 
 # === WORKSPACE PARSING ===
@@ -21,7 +21,7 @@ is_workspace() {
 # Usage: mapfile -t repos < <(parse_workspace_repos "$PROJECT_PATH")
 parse_workspace_repos() {
     local project_path="$1"
-    local conf_file="$project_path/.nyarlathotia/workspace.conf"
+    local conf_file="$project_path/.nyiakeeper/workspace.conf"
 
     [[ ! -f "$conf_file" ]] && return 0
 

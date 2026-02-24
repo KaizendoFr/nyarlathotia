@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# NyarlathotIA OpenCode Configuration Example
+# Nyia Keeper OpenCode Configuration Example
 # Copy this file to opencode.conf and customize as needed
 
 # === ASSISTANT IDENTITY ===
@@ -8,7 +8,7 @@ ASSISTANT_NAME="opencode"
 ASSISTANT_CLI="opencode"
 
 # === DOCKER CONFIGURATION ===
-BASE_IMAGE_NAME="nyarlathotia-opencode"
+BASE_IMAGE_NAME="nyiakeeper-opencode"
 DOCKERFILE_PATH="docker/opencode"
 CONFIG_FILENAME="OPENCODE.md"
 DEFAULT_USER="node"
@@ -19,8 +19,8 @@ ALLOW_DEV_IMAGES="true"
 FORCE_PRODUCTION="false"
 
 # === PROJECT CONTEXT ===
-CONTEXT_DIR_NAME=".nyarlathotia/opencode"
-CONFIG_DIR_NAME=".nyarlathotia/opencode"
+CONTEXT_DIR_NAME=".nyiakeeper/opencode"
+CONFIG_DIR_NAME=".nyiakeeper/opencode"
 
 # === AUTHENTICATION ===
 # For local models (Ollama), leave empty

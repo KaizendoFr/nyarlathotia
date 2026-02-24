@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
-# NyarlathotIA - Common Functions for Multi-Assistant Infrastructure
-# Shared utilities for all AI assistants in the NyarlathotIA ecosystem
+# Nyia Keeper - Common Functions for Multi-Assistant Infrastructure
+# Shared utilities for all AI assistants in the Nyia Keeper ecosystem
 
 set -e
 
@@ -27,11 +27,11 @@ unset _NYIA_BASH_REEXEC
 # Load mount exclusions library if available
 
 # Runtime configuration (always present in dist)
-_exclusions_lib="$HOME/.local/lib/nyarlathotia/mount-exclusions.sh"
+_exclusions_lib="$HOME/.local/lib/nyiakeeper/mount-exclusions.sh"
 if [[ -f "$_exclusions_lib" ]]; then
     source "$_exclusions_lib"
 fi
-_workspace_lib="$HOME/.local/lib/nyarlathotia/workspace.sh"
+_workspace_lib="$HOME/.local/lib/nyiakeeper/workspace.sh"
 if [[ -f "$_workspace_lib" ]]; then
     source "$_workspace_lib"
 fi
@@ -45,8 +45,8 @@ if [[ -f "$HOME/.local/bin/common/shared.sh" ]]; then
 fi
 
 # Load input validation functions for security
-if [[ -f "$HOME/.local/lib/nyarlathotia/input-validation.sh" ]]; then
-    source "$HOME/.local/lib/nyarlathotia/input-validation.sh"
+if [[ -f "$HOME/.local/lib/nyiakeeper/input-validation.sh" ]]; then
+    source "$HOME/.local/lib/nyiakeeper/input-validation.sh"
 fi
 
 # Platform-aware Docker user mapping
@@ -200,22 +200,22 @@ repair_config() {
     local example_file="$2"
     local assistant_name="$3"
 
-    echo "Repairing configuration: $(basename "$config_file")"
+    echo "Repairing configuration: $(basename "$config_file")" >&2
 
     # Add missing required fields with defaults
     if ! grep -q "^ASSISTANT_NAME=" "$config_file" 2>/dev/null; then
         echo "ASSISTANT_NAME=\"$assistant_name\"" >> "$config_file"
-        echo "  Added: ASSISTANT_NAME"
+        echo "  Added: ASSISTANT_NAME" >&2
     fi
 
     if ! grep -q "^ASSISTANT_CLI=" "$config_file" 2>/dev/null; then
         echo "ASSISTANT_CLI=\"$assistant_name\"" >> "$config_file"
-        echo "  Added: ASSISTANT_CLI"
+        echo "  Added: ASSISTANT_CLI" >&2
     fi
 
     if ! grep -q "^BASE_IMAGE_NAME=" "$config_file" 2>/dev/null; then
-        echo "BASE_IMAGE_NAME=\"nyarlathotia-$assistant_name\"" >> "$config_file"
-        echo "  Added: BASE_IMAGE_NAME"
+        echo "BASE_IMAGE_NAME=\"nyiakeeper-$assistant_name\"" >> "$config_file"
+        echo "  Added: BASE_IMAGE_NAME" >&2
     fi
 
     # Add other required fields from example
@@ -224,7 +224,7 @@ repair_config() {
             local value=$(grep "^${field}=" "$example_file" 2>/dev/null | head -1)
             if [[ -n "$value" ]]; then
                 echo "$value" >> "$config_file"
-                echo "  Added: $field"
+                echo "  Added: $field" >&2
             fi
         fi
     done
@@ -243,6 +243,8 @@ generate_default_assistant_configs() {
     for conf_file in "$project_config_dir"/*.conf.example; do
         if [[ -f "$conf_file" ]]; then
             local assistant_name=$(basename "$conf_file" .conf.example)
+            # Skip global config — nyia.conf.example is not an assistant
+            [[ "$assistant_name" == "nyia" ]] && continue
             local assistant_dir="$user_config_dir/$assistant_name"
             ensure_directory_exists "$assistant_dir"
         fi
@@ -267,6 +269,9 @@ generate_default_assistant_configs() {
                 if [[ "$VERBOSE" == "true" ]]; then
                     print_info "Generated new config: ${base_name}.conf"
                 fi
+            elif [[ "$base_name" == "nyia" ]]; then
+                # Global config — skip assistant-specific validation/repair
+                :
             elif ! validate_config "$target_file"; then
                 # Repair existing broken config
                 repair_config "$target_file" "$example_file" "$base_name"
@@ -297,7 +302,7 @@ ensure_prompts_directory() {
 # Ensure project-level prompts directory exists with templates
 ensure_project_prompts_directory() {
     local project_path="$1"
-    local project_prompts_dir="$project_path/.nyarlathotia/prompts"
+    local project_prompts_dir="$project_path/.nyiakeeper/prompts"
 
     # Always ensure directory exists
     ensure_directory_exists "$project_prompts_dir"
@@ -316,20 +321,20 @@ generate_user_prompts_templates() {
     local readme_file="$prompts_dir/README.md"
     if [[ ! -f "$readme_file" ]]; then
         cat > "$readme_file" << 'EOF'
-# NyarlathotIA User Prompt Customization
+# Nyia Keeper User Prompt Customization
 
-This directory allows you to customize the system prompts for all NyarlathotIA assistants.
+This directory allows you to customize the system prompts for all Nyia Keeper assistants.
 
 ## How It Works
 
-NyarlathotIA uses a layered prompt system. Your custom prompts are merged with the system prompts in this order:
+Nyia Keeper uses a layered prompt system. Your custom prompts are merged with the system prompts in this order:
 
 1. **Protected System Constraints** (cannot be overridden)
 2. **Universal Base Prompt** (shared by all assistants)
 3. **Your Base Customizations** (`base-overrides.md`) ← YOU CUSTOMIZE HERE
 4. **Assistant-Specific System Prompts** (claude, gemini, etc.)
 5. **Your Assistant Customizations** (`{assistant}-overrides.md`) ← YOU CUSTOMIZE HERE
-6. **Project-Specific Overrides** (in project's `.nyarlathotia/prompts/`)
+6. **Project-Specific Overrides** (in project's `.nyiakeeper/prompts/`)
 7. **Protected System Enforcement** (cannot be overridden)
 
 ## Available Customization Files
@@ -397,9 +402,9 @@ NyarlathotIA uses a layered prompt system. Your custom prompts are merged with t
 
 ## File Locations
 
-- **User Global**: `~/.config/nyarlathotia/prompts/` (this directory)
-- **Project Specific**: `{project}/.nyarlathotia/prompts/`
-- **System Prompts**: `{nyarlathotia}/docker/shared/system-prompts/`
+- **User Global**: `~/.config/nyiakeeper/prompts/` (this directory)
+- **Project Specific**: `{project}/.nyiakeeper/prompts/`
+- **System Prompts**: `{nyiakeeper}/docker/shared/system-prompts/`
 
 ## Troubleshooting
 
@@ -407,7 +412,7 @@ NyarlathotIA uses a layered prompt system. Your custom prompts are merged with t
 1. Check file name matches exactly (case sensitive)
 2. Ensure file has `.md` extension
 3. Run with `--verbose` to see prompt composition
-4. Regenerate prompt: remove `.nyarlathotia/{assistant}/ASSISTANT.md`
+4. Regenerate prompt: remove `.nyiakeeper/{assistant}/ASSISTANT.md`
 
 ### Syntax errors in generated prompts
 1. Use proper Markdown syntax
@@ -445,7 +450,7 @@ This directory allows you to customize prompts specifically for this project.
 ## How It Works
 
 Project prompts override global prompts and are applied in this order:
-1. Global prompts (`~/.config/nyarlathotia/prompts/`)
+1. Global prompts (`~/.config/nyiakeeper/prompts/`)
 2. **Project prompts** (this directory) ← HIGHEST PRIORITY
 
 ## Available Files
@@ -602,21 +607,21 @@ EOF
     fi
 }
 
-get_nyarlathotia_home() {
+get_nyiakeeper_home() {
     # 1. Environment variable override (highest priority)
-    if [[ -n "$NYARLATHOTIA_HOME" ]]; then
-        ensure_directory_exists "$NYARLATHOTIA_HOME"
+    if [[ -n "$NYIAKEEPER_HOME" ]]; then
+        ensure_directory_exists "$NYIAKEEPER_HOME"
         
         # Auto-generate assistant configs for environment override too
         local project_config_dir="$script_dir/../config"
         if [[ -d "$project_config_dir" ]]; then
-            generate_default_assistant_configs "$NYARLATHOTIA_HOME" "$project_config_dir"
+            generate_default_assistant_configs "$NYIAKEEPER_HOME" "$project_config_dir"
         fi
 
         # Ensure prompts directory exists
-        ensure_prompts_directory "$NYARLATHOTIA_HOME"
+        ensure_prompts_directory "$NYIAKEEPER_HOME"
 
-        echo "$NYARLATHOTIA_HOME"
+        echo "$NYIAKEEPER_HOME"
         return 0
     fi
     
@@ -625,22 +630,26 @@ get_nyarlathotia_home() {
     local config_dir
     case "$(uname -s)" in
         Linux*)
-            config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyarlathotia"
+            config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
             ;;
         Darwin*)
-            config_dir="$HOME/Library/Application Support/nyarlathotia"
+            config_dir="$HOME/Library/Application Support/nyiakeeper"
             ;;
         CYGWIN*|MINGW*|MSYS*)
-            config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyarlathotia"
+            config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyiakeeper"
             ;;
         *)
             # Unix fallback for unknown systems
-            config_dir="$HOME/.config/nyarlathotia"
+            config_dir="$HOME/.config/nyiakeeper"
             ;;
     esac
     
+    # MIGRATION-COMPAT: auto-migrate old config dir if it exists
+    source "$HOME/.local/lib/nyiakeeper/migration-compat.sh" 2>/dev/null && \
+        migrate_config_dir_if_needed "$config_dir"
+
     ensure_directory_exists "$config_dir"
-    
+
     # Auto-generate assistant configs on first run or when examples are updated
     local project_config_dir="$script_dir/../config"
     if [[ -d "$project_config_dir" ]]; then
@@ -710,7 +719,7 @@ backup_assistant_config() {
 # Returns: version string (e.g., "v0.0.5-alpha" or "latest")
 # Fallback: "latest" if file missing or corrupted
 get_installed_version() {
-    local nyia_home=$(get_nyarlathotia_home)
+    local nyia_home=$(get_nyiakeeper_home)
     local version_file="$nyia_home/VERSION"
 
     # Priority 1: Environment variable override (for power users)
@@ -746,7 +755,7 @@ get_installed_version() {
 # Args: $1 = version string (e.g., "v0.0.5-alpha")
 set_installed_version() {
     local version="$1"
-    local nyia_home=$(get_nyarlathotia_home)
+    local nyia_home=$(get_nyiakeeper_home)
     local version_file="$nyia_home/VERSION"
 
     if [[ -z "$version" ]]; then
@@ -1077,7 +1086,7 @@ check_requirements_full() {
 show_requirements_check() {
     local project_path="${1:-$(pwd)}"
     
-    echo "=== NyarlathotIA Requirements Check ==="
+    echo "=== Nyia Keeper Requirements Check ==="
     echo "Project: $(basename "$project_path")"
     echo "Path: $project_path"
     echo ""
@@ -1104,7 +1113,7 @@ show_requirements_check() {
 compose_project_prompt() {
     local assistant_type="$1"
     local project_path="$2"
-    local nyia_home="$(get_nyarlathotia_home)"
+    local nyia_home="$(get_nyiakeeper_home)"
     
     print_verbose "Composing prompt for $assistant_type"
     
@@ -1112,7 +1121,7 @@ compose_project_prompt() {
     local script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
     local nyia_prompts="$script_dir/../docker/shared/system-prompts"
     local user_prompts="$nyia_home/prompts"
-    local project_prompts="$project_path/.nyarlathotia/prompts"
+    local project_prompts="$project_path/.nyiakeeper/prompts"
     
     # 1. Protected prefix (security constraints)
     if [[ -f "$nyia_prompts/protected/universal-prefix.md" ]]; then
@@ -1210,9 +1219,9 @@ check_git_exclusions() {
     
     # Ask user about this specific file
     echo ""
-    print_info "NyarlathotIA Setup: Git Exclusions"
-    echo "NyarlathotIA will create a symlink to generated prompt file:"
-    echo "  $prompt_filename -> .nyarlathotia/[assistant]/$prompt_filename"
+    print_info "Nyia Keeper Setup: Git Exclusions"
+    echo "Nyia Keeper will create a symlink to generated prompt file:"
+    echo "  $prompt_filename -> .nyiakeeper/[assistant]/$prompt_filename"
     echo ""
     echo "This symlink allows the assistant to find its prompt."
     echo "Would you like to exclude $prompt_filename from git tracking?"
@@ -1262,10 +1271,10 @@ generate_assistant_prompts() {
     fi
     
     # Create relative symlink to the context directory
-    ln -s ".nyarlathotia/$assistant_cli/$prompt_filename" "$symlink_path"
+    ln -s ".nyiakeeper/$assistant_cli/$prompt_filename" "$symlink_path"
     
     # Write prompt content to the actual file location
-    local prompt_file="$project_path/.nyarlathotia/$assistant_cli/$prompt_filename"
+    local prompt_file="$project_path/.nyiakeeper/$assistant_cli/$prompt_filename"
     echo "$prompt_content" > "$prompt_file"
     
     local file_size=$(wc -c < "$prompt_file")
@@ -1288,7 +1297,7 @@ determine_overlay_base_image() {
     if [[ $current_step -eq 0 ]]; then
         # Runtime: Use registry image with proper namespace
         local registry=$(get_docker_registry)
-        echo "${registry}/nyarlathotia-${assistant_name}:latest"
+        echo "${registry}/nyiakeeper-${assistant_name}:latest"
     else
         # Subsequent overlays: use previous overlay output
         echo "${previous_tags[$((current_step-1))]}"
@@ -1305,10 +1314,10 @@ build_custom_image() {
 
     # Determine base image (priority: override > flavor > default)
     if [[ -n "${FLAVOR:-}" ]]; then
-        base_image="${registry}/nyarlathotia-${assistant_name}-${FLAVOR}:latest"
+        base_image="${registry}/nyiakeeper-${assistant_name}-${FLAVOR}:latest"
         print_info "Using flavor '${FLAVOR}' as base"
     else
-        base_image="${registry}/nyarlathotia-${assistant_name}:latest"
+        base_image="${registry}/nyiakeeper-${assistant_name}:latest"
     fi
     
     # Check for Docker
@@ -1319,8 +1328,8 @@ build_custom_image() {
     fi
     
     # Check for overlays
-    local user_overlay="$HOME/.config/nyarlathotia/${assistant_name}/overlay/Dockerfile"
-    local project_overlay="$(pwd)/.nyarlathotia/${assistant_name}/overlay/Dockerfile"
+    local user_overlay="$HOME/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile"
+    local project_overlay="$(pwd)/.nyiakeeper/${assistant_name}/overlay/Dockerfile"
     local has_overlay=false
     
     if [[ -f "$user_overlay" ]]; then
@@ -1354,9 +1363,9 @@ build_custom_image() {
     # Build custom image (include flavor in name if used)
     local custom_image_name
     if [[ -n "${FLAVOR:-}" ]]; then
-        custom_image_name="nyarlathotia-${assistant_name}-${FLAVOR}-custom"
+        custom_image_name="nyiakeeper/${assistant_name}-${FLAVOR}-custom"
     else
-        custom_image_name="nyarlathotia-${assistant_name}-custom"
+        custom_image_name="nyiakeeper/${assistant_name}-custom"
     fi
     local build_context="$(pwd)"
     
@@ -1428,7 +1437,7 @@ check_docker_image() {
 # Returns docker -e arguments for all exported variables
 get_creds_env_args() {
     local project_path="${1:-$(pwd)}"
-    local creds_file="$project_path/.nyarlathotia/creds/env"
+    local creds_file="$project_path/.nyiakeeper/creds/env"
     local env_args=()
     
     if [[ -f "$creds_file" ]]; then
@@ -1491,8 +1500,8 @@ create_docker_env_file() {
     
     print_verbose "Creating Docker environment file (secure): $env_file"
     
-    # Add credentials from .nyarlathotia/creds/env file
-    local creds_file="$project_path/.nyarlathotia/creds/env"
+    # Add credentials from .nyiakeeper/creds/env file
+    local creds_file="$project_path/.nyiakeeper/creds/env"
     if [[ -f "$creds_file" ]]; then
         print_verbose "Loading credentials from $creds_file"
         # Extract just the VAR=value part from -e VAR=value arguments
@@ -1508,7 +1517,7 @@ create_docker_env_file() {
     local config_file=""
     if [[ -n "$assistant_name" ]]; then
         # Get proper config directory
-        local nyia_home=$(get_nyarlathotia_home)
+        local nyia_home=$(get_nyiakeeper_home)
         # Handle openai-codex case where assistant_cli is "codex" but config file is "openai-codex.conf"
         if [[ "$assistant_name" == "codex" ]]; then
             config_file="$nyia_home/config/openai-codex.conf"
@@ -1517,7 +1526,7 @@ create_docker_env_file() {
         fi
     else
         # Fallback to basename detection (may not work in all contexts)
-        local nyia_home=$(get_nyarlathotia_home)
+        local nyia_home=$(get_nyiakeeper_home)
         config_file="$nyia_home/config/$(basename "$0" .sh).conf"
     fi
     
@@ -1529,7 +1538,7 @@ create_docker_env_file() {
 source "$1"
 
 # Debug: Show AUTH_METHOD value
-if [[ -n "${VERBOSE:-}" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
+if [[ "${VERBOSE:-}" == "true" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
     echo "# DEBUG: AUTH_METHOD=$AUTH_METHOD" >&2
 fi
 
@@ -1544,11 +1553,11 @@ done
 # AUTH_METHOD is loaded from the config file we just sourced
 if [[ -n "$OPENAI_API_KEY" && "$AUTH_METHOD" != "chatgpt_signin" ]]; then
     echo "OPENAI_API_KEY=$OPENAI_API_KEY"
-    if [[ -n "${VERBOSE:-}" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
+    if [[ "${VERBOSE:-}" == "true" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
         echo "# DEBUG: Passing OPENAI_API_KEY because AUTH_METHOD='$AUTH_METHOD' != 'chatgpt_signin'" >&2
     fi
 else
-    if [[ -n "${VERBOSE:-}" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
+    if [[ "${VERBOSE:-}" == "true" ]] || [[ "${NYIA_DEBUG:-}" == "true" ]]; then
         echo "# DEBUG: NOT passing OPENAI_API_KEY (AUTH_METHOD='$AUTH_METHOD', key exists: ${OPENAI_API_KEY:+yes})" >&2
     fi
 fi
@@ -1589,7 +1598,7 @@ get_all_env_args() {
 # Check if assistant credentials are available
 # Arguments:
 #   $1 - CLI command name
-#   $2 - Assistant config directory (e.g. ~/.nyarlathotia/assistant)
+#   $2 - Assistant config directory (e.g. ~/.nyiakeeper/assistant)
 #   $3 - Directory name for credentials (e.g. .codex)
 #   $4 - API key environment variable
 check_credentials() {
@@ -1610,7 +1619,7 @@ check_credentials() {
     # Assistant-specific credential checking
     case "$cli" in
         claude)
-            # Check for Claude credentials on the host in the NyarlathotIA config directory
+            # Check for Claude credentials on the host in the Nyia Keeper config directory
             # These will be mounted into the container at ~/.claude/
             if [[ ! -f "$cfg_dir/.credentials.json" ]]; then
                 print_verbose "Claude credentials not found: $cfg_dir/.credentials.json"
@@ -1766,7 +1775,7 @@ generate_container_name() {
     local assistant_name="$1"
     local project_path="$2"
     local project_basename=$(basename "$project_path" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-    echo "nyarlathotia-${assistant_name}-${project_basename}-$(date +%s)"
+    echo "nyiakeeper-${assistant_name}-${project_basename}-$(date +%s)"
 }
 
 # Run debug shell without git-entrypoint
@@ -1955,6 +1964,23 @@ run_docker_container() {
     docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
     docker_env_args+=(-e NYIA_BUILD_TIMESTAMP="$(date -Iseconds)")
 
+    # Pass agent persona selection to container (Plan 149)
+    if [[ -n "${NYIA_AGENT:-}" ]]; then
+        docker_env_args+=(-e NYIA_AGENT="${NYIA_AGENT}")
+    fi
+
+    # Resolve and pass command approval mode to container (Plan 145)
+    # Source command-policy on demand
+    local _policy_lib=""
+    _policy_lib="$HOME/.local/lib/nyiakeeper/command-policy.sh"
+    if [[ -f "$_policy_lib" ]]; then
+        source "$_policy_lib"
+        resolve_and_export_command_mode "$assistant_cli" "$project_path"
+        docker_env_args+=(-e NYIA_COMMAND_MODE="${NYIA_COMMAND_MODE}")
+        docker_env_args+=(-e NYIA_COMMAND_MODE_SOURCE="${NYIA_COMMAND_MODE_SOURCE}")
+        print_verbose "Command mode: ${NYIA_COMMAND_MODE} (source: ${NYIA_COMMAND_MODE_SOURCE})"
+    fi
+
     # Pass work branch to container if set (for --work-branch support)
     if [[ -n "${NYIA_WORK_BRANCH:-}" ]]; then
         docker_env_args+=(-e NYIA_WORK_BRANCH="${NYIA_WORK_BRANCH}")
@@ -2090,7 +2116,7 @@ set_api_key_helper() {
     fi
     
     # Look for auth.json from codex login
-    local nyia_home=$(get_nyarlathotia_home)
+    local nyia_home=$(get_nyiakeeper_home)
     local auth_file="$nyia_home/$assistant_cli/auth.json"
     
     if [[ ! -f "$auth_file" ]]; then
@@ -2142,7 +2168,7 @@ login_assistant() {
     local shell_mode="${6:-false}"
     local docker_image="${7:-}"
 
-    local nyia_home=$(get_nyarlathotia_home)
+    local nyia_home=$(get_nyiakeeper_home)
     local global_config_dir="$nyia_home/$assistant_cli"
     mkdir -p "$global_config_dir"
 
@@ -2196,7 +2222,7 @@ login_assistant() {
         print_status "Image not found: $full_image_name"
         print_status "Pulling image from registry for login..."
         local registry=$(get_docker_registry)
-        local registry_image="${registry}/nyarlathotia-${assistant_cli}:latest"
+        local registry_image="${registry}/nyiakeeper-${assistant_cli}:latest"
         if ! docker pull "$registry_image"; then
             print_error "Failed to pull image: $registry_image"
             exit 1
@@ -2467,82 +2493,10 @@ init_project_context() {
 EOF
 
         # Note: decisions.md and todo.md are no longer created here
-        # Project-wide todo.md is in .nyarlathotia/todo.md
+        # Project-wide todo.md is in .nyiakeeper/todo.md
         # Decisions are tracked in context.md as insights
 
         print_success "${assistant_name} context directory initialized"
-    fi
-}
-
-# === STATUS DISPLAY ===
-show_assistant_status() {
-    local assistant_name="$1"
-    local project_path="$2"
-    local nyarlathotia_home="$3"
-    local base_image_name="$4"
-    local context_dir_name="$5"
-    local force_production="${6:-false}"
-    
-    local project_hash=$(get_project_hash "$project_path")
-    local global_config_dir="$nyarlathotia_home/$assistant_name"
-    local data_dir="$nyarlathotia_home/data/$project_hash"
-    local current_branch=$(get_current_branch "$project_path")
-    local full_image_name=$(get_docker_image_name "$base_image_name" "$force_production")
-
-    echo "NyarlathotIA ${assistant_name} Status:"
-    echo "  Project: $(basename "$project_path")"
-    echo "  Path: $project_path"
-    echo "  Branch: $current_branch"
-    
-    # Show image information
-
-    # Runtime: Show registry image status
-    local registry=$(get_docker_registry)
-    local registry_image="${registry}/nyarlathotia-${assistant_name}:latest"
-    echo "  Image: $registry_image (registry)"
-    if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "$registry_image"; then
-        echo "  Status: ✅ Available locally"
-    else
-        echo "  Status: ⏳ Will be pulled when needed"
-    fi
-    
-    echo "  Hash: $project_hash"
-    echo "  Data dir: $data_dir"
-    echo "  Context dir: $project_path/$context_dir_name"
-    echo "  Assistant config: $global_config_dir"
-
-    if [[ -d "$project_path/$context_dir_name" ]]; then
-        echo "  Context files:"
-        ls -la "$project_path/$context_dir_name/" 2>/dev/null || echo "    None found"
-    else
-        echo "  Context: Not initialized"
-    fi
-
-    if [[ -d "$global_config_dir" ]]; then
-        echo "  Assistant config: ✅ Ready"
-        echo "    Contents:"
-        ls -la "$global_config_dir/" 2>/dev/null || echo "    Empty (setup needed)"
-    else
-        echo "  Assistant config: ❌ Not set up"
-    fi
-
-    # Check if current Docker image exists
-
-    # Runtime: Check registry image availability
-    local registry=$(get_docker_registry)
-    local registry_image="${registry}/nyarlathotia-${assistant_name}:latest"
-    if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "$registry_image"; then
-        echo "  Current image: ✅ Ready"
-    else
-        echo "  Current image: ⏳ Available from registry"
-    fi
-    
-    # Show all available images for this assistant
-    echo "  Available images:"
-    if docker images --filter "reference=${base_image_name}*" --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | tail -n +2 | grep -q .; then
-        docker images --filter "reference=${base_image_name}*" --format "    {{.Repository}}:{{.Tag}} ({{.Size}}, {{.CreatedAt}})"
-    else
-        echo "    No images found"
     fi
 }
 
@@ -2553,9 +2507,9 @@ show_assistant_status() {
 list_assistant_images() {
     local base_image_name="$1"
 
-    # Strip nyarlathotia- prefix to match actual image names
-    local clean_name="${base_image_name#nyarlathotia-}"
-    local search_pattern="nyarlathotia/${clean_name}"
+    # Strip nyiakeeper- prefix to match actual image names
+    local clean_name="${base_image_name#nyiakeeper-}"
+    local search_pattern="nyiakeeper/${clean_name}"
 
     print_status "Available images for ${clean_name}:"
 
@@ -2604,7 +2558,7 @@ list_assistant_flavors() {
     local script_dir="$(dirname "${BASH_SOURCE[0]}")"
     local flavors_file="$script_dir/../lib/flavors.list"
 
-    echo "NyarlathotIA ${assistant_name} - Available Flavors:"
+    echo "Nyia Keeper ${assistant_name} - Available Flavors:"
     echo ""
 
     if [[ -f "$flavors_file" ]]; then
@@ -2641,8 +2595,8 @@ run_assistant() {
     local docker_image="${10:-}"
     local work_branch="${11:-}"
 
-    # Get NyarlathotIA home
-    local nyarlathotia_home=$(get_nyarlathotia_home)
+    # Get Nyia Keeper home
+    local nyiakeeper_home=$(get_nyiakeeper_home)
     
     # Validate project path
     if [[ ! -d "$project_path" ]]; then
@@ -2652,13 +2606,13 @@ run_assistant() {
 
     # Get project hash for data persistence
     local project_hash=$(get_project_hash "$project_path")
-    local project_data_dir="$nyarlathotia_home/data/$project_hash"
+    local project_data_dir="$nyiakeeper_home/data/$project_hash"
 
     # Create data directory if needed
     mkdir -p "$project_data_dir"
 
     # Create assistant config directory - use CLI name for consistency with login
-    local global_config_dir="$nyarlathotia_home/$assistant_cli"
+    local global_config_dir="$nyiakeeper_home/$assistant_cli"
     mkdir -p "$global_config_dir"
 
     # Container path for credentials (default: uses config value or assistant CLI)
@@ -2745,13 +2699,15 @@ run_assistant() {
     # Check if the selected image exists
     if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_error "Image not found: $full_image_name"
-        
-        # Show available images for reference
+
+        # Show available images for reference (convert dash-form config name to slash-form)
+        local _clean="${base_image_name#nyiakeeper-}"
+        local _search="nyiakeeper/${_clean}"
         print_info "Available images:"
-        if docker images --filter "reference=${base_image_name}*" --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null | head -10 | grep -q .; then
-            docker images --filter "reference=${base_image_name}*" --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null | head -10
+        if docker images --filter "reference=${_search}*" --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null | head -10 | grep -q .; then
+            docker images --filter "reference=${_search}*" --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null | head -10
         else
-            print_info "  No images found for $base_image_name"
+            print_info "  No images found for ${_clean}"
         fi
         
         # Different behavior based on what caused the failure
@@ -2775,7 +2731,7 @@ run_assistant() {
 
             print_status "Pulling image from registry..."
             local registry=$(get_docker_registry)
-            local registry_image="${registry}/nyarlathotia-${assistant_cli}:latest"
+            local registry_image="${registry}/nyiakeeper-${assistant_cli}:latest"
             if ! docker pull "$registry_image"; then
                 print_error "Failed to pull image: $registry_image"
                 print_info "💡 Contact administrator if registry access issues persist"

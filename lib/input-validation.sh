@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 # Input validation functions for security
 # Prevents command injection and directory traversal attacks
 
@@ -99,7 +99,36 @@ validate_image_name() {
     else
         print_error "Invalid image name format: '$image'"
         print_info "Expected format: [registry/]name[:tag]"
-        print_info "Example: nyarlathotia/claude:latest"
+        print_info "Example: nyiakeeper/claude:latest"
+        return 1
+    fi
+}
+
+# Validate agent persona names (prevent injection, enforce naming policy)
+validate_agent_name() {
+    local name="$1"
+
+    # Empty name
+    if [[ -z "$name" ]]; then
+        print_error "Agent name cannot be empty"
+        return 1
+    fi
+
+    # Length check (1-64 chars, aligned with Agent Skills spec)
+    if [[ ${#name} -gt 64 ]]; then
+        print_error "Agent name too long: '${name:0:20}...' (max 64 characters)"
+        return 1
+    fi
+
+    # Allow: lowercase letters, numbers, hyphens (same as Agent Skills spec)
+    # Must start and end with alphanumeric
+    if [[ "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+        return 0
+    else
+        print_error "Invalid agent name: '$name'"
+        print_info "Agent names must contain only lowercase letters, numbers, and hyphens"
+        print_info "Must start and end with a letter or number"
+        print_info "Examples: reviewer, my-planner, code-review-v2"
         return 1
     fi
 }
@@ -113,6 +142,7 @@ sanitize_branch_name() {
 
 # Export functions so they can be used after sourcing
 export -f validate_branch_name
-export -f validate_file_path  
+export -f validate_file_path
 export -f validate_image_name
+export -f validate_agent_name
 export -f sanitize_branch_name

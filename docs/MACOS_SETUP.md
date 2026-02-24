@@ -1,4 +1,4 @@
-# NyarlathotIA on macOS
+# Nyia Keeper on macOS
 
 Quick setup guide for Apple/macOS users.
 
@@ -7,7 +7,7 @@ Quick setup guide for Apple/macOS users.
 The macOS installer handles everything automatically - Docker detection, installation guidance, and PATH configuration:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/scripts/install-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/scripts/install-macos.sh | bash
 ```
 
 The installer will:
@@ -15,7 +15,7 @@ The installer will:
 2. Detect if Docker Desktop is installed and running
 3. Guide you through Docker installation if needed (Homebrew or direct download)
 4. Check for Bash 4+ and offer to install via Homebrew if missing
-5. Download and install NyarlathotIA
+5. Download and install Nyia Keeper
 6. Configure your PATH automatically (detects zsh vs bash)
 
 ### Beginner Guide
@@ -35,7 +35,7 @@ After installation, **close Terminal and open a new window** for the PATH change
 
 ### Option 1: Standard Installer
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/install.sh | bash
 ```
 
 **Note**: This requires Docker Desktop to already be installed and running.
@@ -43,13 +43,13 @@ curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyarlathotia/main/instal
 ### Option 2: Manual Install
 ```bash
 # Clone the repository
-git clone https://github.com/KaizendoFr/nyarlathotia.git ~/.local/lib/nyarlathotia
+git clone https://github.com/KaizendoFr/nyia-keeper.git ~/.local/lib/nyiakeeper
 
 # Add to PATH (add to ~/.zshrc for persistence)
-export PATH="$HOME/.local/lib/nyarlathotia/bin:$PATH"
+export PATH="$HOME/.local/lib/nyiakeeper/bin:$PATH"
 
 # Make scripts executable
-chmod +x ~/.local/lib/nyarlathotia/bin/nyia*
+chmod +x ~/.local/lib/nyiakeeper/bin/nyia*
 ```
 
 ---
@@ -96,7 +96,7 @@ nyia-claude --login
 
 ### Docker Desktop Differences
 
-NyarlathotIA automatically detects macOS and adjusts:
+Nyia Keeper automatically detects macOS and adjusts:
 
 | Feature | Linux | macOS |
 |---------|-------|-------|
@@ -126,7 +126,7 @@ ollama serve
 ollama pull nomic-embed-text
 
 # Configure in assistant config
-echo "NYIA_RAG_MODEL=nomic-embed-text" >> ~/.config/nyarlathotia/claude.conf
+echo "NYIA_RAG_MODEL=nomic-embed-text" >> ~/.config/nyiakeeper/claude.conf
 
 # Use RAG
 nyia-claude --rag -p "Search for authentication code"
@@ -166,7 +166,7 @@ docker info
 
 ### Permission Denied on Scripts
 ```bash
-chmod +x ~/.local/lib/nyarlathotia/bin/nyia*
+chmod +x ~/.local/lib/nyiakeeper/bin/nyia*
 ```
 
 ### Apple Silicon (M1/M2/M3)
@@ -201,11 +201,11 @@ nyia-claude --shell
 
 ## Uninstall
 
-To remove NyarlathotIA:
+To remove Nyia Keeper:
 
 ```bash
 # Remove installed files
-rm -rf ~/.local/lib/nyarlathotia
+rm -rf ~/.local/lib/nyiakeeper
 rm -f ~/.local/bin/nyia*
 
 # Optional: Remove PATH from shell config
@@ -220,5 +220,5 @@ rm -f ~/.local/bin/nyia*
 
 ## Support
 
-- Issues: https://github.com/KaizendoFr/nyarlathotia/issues
-- Docs: https://github.com/KaizendoFr/nyarlathotia/tree/main/docs
+- Issues: https://github.com/KaizendoFr/nyia-keeper/issues
+- Docs: https://github.com/KaizendoFr/nyia-keeper/tree/main/docs

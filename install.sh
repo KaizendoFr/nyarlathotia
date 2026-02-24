@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
-# NyarlathotIA Public Installer
+# Nyia Keeper Public Installer
 # Downloads release tarball and runs the real installer inside it
 
 set -e
 
-echo "🚀 Installing NyarlathotIA..."
+echo "🚀 Installing Nyia Keeper..."
 
 # Configuration
-PUBLIC_REPO="KaizendoFr/nyarlathotia"
+PUBLIC_REPO="KaizendoFr/nyiakeeper"
 
 # Allow specifying version via environment variable or argument
 if [[ -n "$1" ]]; then
@@ -23,12 +23,12 @@ elif [[ -n "$NYIA_VERSION" ]]; then
     echo "📦 Installing specific version: $NYIA_VERSION"
 else
     # Default to latest release (pipeline may replace with specific tag for versioned releases)
-    RELEASE_TYPE="tags/v0.1.0-alpha.39"
-    echo "📦 Installing version: v0.1.0-alpha.39"
+    RELEASE_TYPE="tags/v0.1.0-alpha.42"
+    echo "📦 Installing version: v0.1.0-alpha.42"
 fi
 
 # Find release with debugging
-echo "🔍 Finding NyarlathotIA release..."
+echo "🔍 Finding Nyia Keeper release..."
 RELEASE_URL="https://api.github.com/repos/$PUBLIC_REPO/releases/$RELEASE_TYPE"
 echo "Debug: API URL: $RELEASE_URL"
 
@@ -43,16 +43,16 @@ fi
 
 # Build direct download URL
 if [[ "$RELEASE_TYPE" == "latest" ]]; then
-    TARBALL_URL="https://github.com/$PUBLIC_REPO/releases/latest/download/nyarlathotia-runtime.tar.gz"
+    TARBALL_URL="https://github.com/$PUBLIC_REPO/releases/latest/download/nyiakeeper-runtime.tar.gz"
 else
     # Extract tag from "tags/v1.0.0" format
     TAG_NAME="${RELEASE_TYPE#tags/}"
-    TARBALL_URL="https://github.com/$PUBLIC_REPO/releases/download/$TAG_NAME/nyarlathotia-runtime.tar.gz"
+    TARBALL_URL="https://github.com/$PUBLIC_REPO/releases/download/$TAG_NAME/nyiakeeper-runtime.tar.gz"
 fi
 
 echo "✅ Using release tarball: $TARBALL_URL"
 
-echo "📥 Downloading NyarlathotIA runtime..."
+echo "📥 Downloading Nyia Keeper runtime..."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
@@ -69,7 +69,7 @@ else
     exit 1
 fi
 
-echo "✅ NyarlathotIA installation complete!"
+echo "✅ Nyia Keeper installation complete!"
 echo ""
 echo "Next steps:"
 echo "1. Add ~/.local/bin to your PATH if not already done"

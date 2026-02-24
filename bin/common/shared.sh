@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
-# Copyright (c) 2024 NyarlathotIA Contributors
+# Copyright (c) 2024 Nyia Keeper Contributors
 
 # shared.sh - Common utility functions for nyarlathotepIA multi-provider system
 # Shared across all providers: claude, gemini, codestral, chatgpt
@@ -112,21 +112,25 @@ resolve_absolute_path() {
     fi
 }
 
-# Initialize .nyarlathotia directory with unified context structure
-init_nyarlathotia_dir() {
+# Initialize .nyiakeeper directory with unified context structure
+init_nyiakeeper_dir() {
     local project_path="$1"
-    local nyia_dir="$project_path/.nyarlathotia"
+    local nyia_dir="$project_path/.nyiakeeper"
     local needs_repair=false
+
+    # MIGRATION-COMPAT: auto-migrate old project dir if it exists
+    source "$HOME/.local/lib/nyiakeeper/migration-compat.sh" 2>/dev/null && \
+        migrate_project_dir_if_needed "$project_path"
 
     # Create directory if it doesn't exist
     if [[ ! -d "$nyia_dir" ]]; then
-        print_status "Initializing NyarlathotIA project context directory..."
+        print_status "Initializing Nyia Keeper project context directory..."
         mkdir -p "$nyia_dir"
         needs_repair=true
     else
         # Check if essential files are missing
         if [[ ! -f "$nyia_dir/todo.md" ]] || [[ ! -d "$nyia_dir/plans" ]]; then
-            print_status "Repairing incomplete NyarlathotIA structure..."
+            print_status "Repairing incomplete Nyia Keeper structure..."
             needs_repair=true
         fi
     fi
@@ -152,7 +156,7 @@ init_nyarlathotia_dir() {
 - [ ] Consider additional AI integrations - Priority: Low
 
 ## ✅ Done
-- [x] Initialize NyarlathotIA project structure - Completed: $(date +%Y-%m-%d)
+- [x] Initialize Nyia Keeper project structure - Completed: $(date +%Y-%m-%d)
 
 ## 🚧 Blocked
 # No current blockers
@@ -186,22 +190,22 @@ EOF
             print_success "Created plans/README.md file"
         fi
         
-        print_success "NyarlathotIA context directory structure complete"
+        print_success "Nyia Keeper context directory structure complete"
     fi
 }
 
-# Initialize provider-specific context directory (within .nyarlathotia/)
+# Initialize provider-specific context directory (within .nyiakeeper/)
 init_provider_context() {
     local project_path="$1"
     local provider="$2"
-    local nyia_dir="$project_path/.nyarlathotia"
+    local nyia_dir="$project_path/.nyiakeeper"
     local context_dir="$nyia_dir/$provider"
 
-    # Ensure .nyarlathotia exists first
-    init_nyarlathotia_dir "$project_path"
+    # Ensure .nyiakeeper exists first
+    init_nyiakeeper_dir "$project_path"
 
     if [[ ! -d "$context_dir" ]]; then
-        print_status "Initializing $provider context within .nyarlathotia/..."
+        print_status "Initializing $provider context within .nyiakeeper/..."
         mkdir -p "$context_dir"
         
         # Create commands directory for provider-specific commands
@@ -235,7 +239,7 @@ init_provider_context() {
 - [Cross-session continuity information]
 EOF
 
-        print_success "$provider context directory initialized in .nyarlathotia/"
+        print_success "$provider context directory initialized in .nyiakeeper/"
     fi
 }
 
@@ -376,8 +380,8 @@ log_command() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     # Log to provider-specific log file if logging is enabled
-    if [[ "${NYARLATHOTEP_LOGGING:-false}" == "true" ]]; then
-        local log_file="/tmp/nyarlathotep-$provider.log"
+    if [[ "${NYIA_LOGGING:-false}" == "true" ]]; then
+        local log_file="/tmp/nyia-$provider.log"
         echo "[$timestamp] $command" >> "$log_file"
     fi
 }
@@ -431,8 +435,8 @@ init_shared_environment() {
     check_bash_version
     
     # Set default values
-    export NYARLATHOTEP_LOGGING="${NYARLATHOTEP_LOGGING:-false}"
-    export NYARLATHOTEP_DEBUG="${NYARLATHOTEP_DEBUG:-false}"
+    export NYIA_LOGGING="${NYIA_LOGGING:-false}"
+    export NYIA_DEBUG="${NYIA_DEBUG:-false}"
 }
 
 # Package manager detection and support
@@ -483,7 +487,7 @@ get_gnu_command() {
 
 # Debug helpers
 debug_log() {
-    if [[ "${NYARLATHOTEP_DEBUG:-false}" == "true" ]]; then
+    if [[ "${NYIA_DEBUG:-false}" == "true" ]]; then
         echo -e "${CYAN}🐛 DEBUG: $1${NC}" >&2
     fi
 }
@@ -505,11 +509,11 @@ create_local_context_dir() {
     local assistant_cli="$2"
     local assistant_name="$3"
     
-    local nyia_dir="$project_path/.nyarlathotia"
+    local nyia_dir="$project_path/.nyiakeeper"
     local context_dir="$nyia_dir/$assistant_cli"
     
-    # Ensure base .nyarlathotia directory exists
-    init_nyarlathotia_dir "$project_path"
+    # Ensure base .nyiakeeper directory exists
+    init_nyiakeeper_dir "$project_path"
     
     # Create assistant-specific context directory
     if [[ ! -d "$context_dir" ]]; then
@@ -522,7 +526,7 @@ create_local_context_dir() {
         # Generate context.md using common template
         generate_context_template "$project_path" "$assistant_cli" "$assistant_name" > "$context_dir/context.md"
         
-        print_success "$assistant_name local context initialized in .nyarlathotia/$assistant_cli/"
+        print_success "$assistant_name local context initialized in .nyiakeeper/$assistant_cli/"
     fi
     
     return 0
@@ -604,7 +608,7 @@ ensure_assistant_context() {
 
 # Codex global deployment removed - now uses standard project-local approach
 
-# Note: get_nyarlathotia_home() is defined in common-functions.sh
+# Note: get_nyiakeeper_home() is defined in common-functions.sh
 
 # === REGISTRY SUPPORT ===
 
@@ -645,11 +649,11 @@ get_image_name() {
     local registry=$(get_docker_registry)
 
     if [[ -n "$registry" ]]; then
-        # Registry: keep nyarlathotia- prefix (matches GHCR naming)
-        echo "${registry}/nyarlathotia-${assistant}:latest"
+        # Registry: keep nyiakeeper- prefix (matches GHCR naming)
+        echo "${registry}/nyiakeeper-${assistant}:latest"
     else
         # Local: no prefix (clean names for dev)
-        echo "nyarlathotia/${assistant}:latest"
+        echo "nyiakeeper/${assistant}:latest"
     fi
 }
 
@@ -668,14 +672,14 @@ get_flavor_image_name() {
 
     if [[ -n "$registry" ]]; then
         # Registry: always use :latest (CI/CD handles versioning)
-        echo "${registry}/nyarlathotia-${flavor_name}:latest"
+        echo "${registry}/nyiakeeper-${flavor_name}:latest"
     elif [[ "$dev_mode" == "true" ]]; then
         # Dev mode: branch-tagged
         local branch=$(sanitize_branch_name "$(get_current_branch)")
-        echo "nyarlathotia/${flavor_name}:dev-${branch}"
+        echo "nyiakeeper/${flavor_name}:dev-${branch}"
     else
         # Default local: latest tag
-        echo "nyarlathotia/${flavor_name}:latest"
+        echo "nyiakeeper/${flavor_name}:latest"
     fi
 }
 
@@ -703,56 +707,6 @@ validate_flavor_name() {
     else
         return 1
     fi
-}
-
-# Build flavor image name from assistant and flavor
-build_flavor_image_name() {
-    local assistant="$1"
-    local flavor="$2"
-    
-    # Validate inputs
-    if [[ -z "$assistant" ]] || [[ -z "$flavor" ]]; then
-        return 1
-    fi
-    
-    # Validate flavor name
-    if ! validate_flavor_name "$flavor"; then
-        return 1
-    fi
-    
-    # Build and return image name
-    echo "nyarlathotia-${assistant}-${flavor}:latest"
-}
-
-# Check if a flavor image exists locally or in registry
-validate_flavor_exists() {
-    local assistant="$1"
-    local flavor="$2"
-    
-    # Build the full image name
-    local registry=$(get_docker_registry)
-    local image_name
-    
-    if [[ -n "$registry" ]]; then
-        image_name="${registry}/nyarlathotia-${assistant}-${flavor}:latest"
-    else
-        image_name="nyarlathotia-${assistant}-${flavor}:latest"
-    fi
-    
-    # Check if image exists locally
-    if /usr/bin/docker image inspect "$image_name" >/dev/null 2>&1; then
-        return 0
-    fi
-    
-    # If using registry, try to check if it exists remotely
-    if [[ -n "$registry" ]]; then
-        # Try a quick manifest check (this will be enhanced in Phase 3)
-        if /usr/bin/docker manifest inspect "$image_name" >/dev/null 2>&1; then
-            return 0
-        fi
-    fi
-    
-    return 1
 }
 
 # Show helpful error message for missing flavors
@@ -803,7 +757,7 @@ resolve_flavor_image() {
     local docker_image="${3:-${DOCKER_IMAGE:-}}"
     
     # Extract assistant name from base image name
-    local assistant_name=$(basename "$base_image_name" | sed 's/^nyarlathotia-//')
+    local assistant_name=$(basename "$base_image_name" | sed 's/^nyiakeeper-//')
     
     # Precedence 1: Explicit --image flag (highest priority)
     if [[ -n "$docker_image" ]]; then
@@ -825,10 +779,10 @@ resolve_flavor_image() {
         
         if [[ -n "$registry" ]]; then
             # Use registry with flavor
-            flavor_image="${registry}/nyarlathotia-${assistant_name}-${flavor}:latest"
+            flavor_image="${registry}/nyiakeeper-${assistant_name}-${flavor}:latest"
         else
             # Local image with flavor
-            flavor_image="nyarlathotia-${assistant_name}-${flavor}:latest"
+            flavor_image="nyiakeeper/${assistant_name}-${flavor}:latest"
         fi
         
         echo "$flavor_image"

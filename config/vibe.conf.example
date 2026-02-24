@@ -1,11 +1,11 @@
-# NyarlathotIA Vibe Configuration
+# Nyia Keeper Vibe Configuration
 
 # === ASSISTANT IDENTITY ===
 ASSISTANT_NAME="vibe"
 ASSISTANT_CLI="vibe"
 
 # === DOCKER CONFIGURATION ===
-BASE_IMAGE_NAME="nyarlathotia-vibe"
+BASE_IMAGE_NAME="nyiakeeper-vibe"
 DOCKERFILE_PATH="docker/vibe"
 CONFIG_FILENAME="VIBE.md"
 DEFAULT_USER="node"
@@ -16,8 +16,8 @@ ALLOW_DEV_IMAGES="true"
 FORCE_PRODUCTION="false"
 
 # === PROJECT CONTEXT ===
-CONTEXT_DIR_NAME=".nyarlathotia/vibe"
-CONFIG_DIR_NAME=".nyarlathotia/vibe"
+CONTEXT_DIR_NAME=".nyiakeeper/vibe"
+CONFIG_DIR_NAME=".nyiakeeper/vibe"
 
 
 # === AUTHENTICATION ===

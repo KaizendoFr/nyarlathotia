@@ -1,4 +1,4 @@
-# NyarlathotIA CLI Reference
+# Nyia Keeper CLI Reference
 
 Complete reference for all CLI flags and their interactions.
 
@@ -11,11 +11,14 @@ Complete reference for all CLI flags and their interactions.
 | `--create` | Branch | `--work-branch` | `--current-branch` | Create branch if missing |
 | `--base-branch <name>` | Branch | - | - | Source branch for new branch |
 | `--build-custom-image` | Build | - | - | Build with user overlays |
+| `--base-image <image>` | Build | `--build-custom-image` | `--flavor` | Override base image for overlay build (dev only) |
 | `--no-cache` | Build | `--build`* or `--build-custom-image` | - | Force rebuild without Docker cache |
 | `--flavor <name>` | Image | - | `--image`* | Use flavor image |
 | `--image <tag>` | Image | - | `--flavor`* | Use specific image |
 | `--list-images` | Image | - | - | List available images |
 | `--flavors-list` | Image | - | - | List available flavors |
+| `--agent <name>` | Agent | - | - | Select agent persona for session |
+| `--list-agents` | Agent | - | - | List available agent personas |
 | `--rag` | RAG | Ollama | - | Enable codebase search |
 | `--rag-verbose` | RAG | `--rag` | - | Debug RAG indexing |
 | `--rag-model <name>` | RAG | `--rag` | - | Override embedding model |
@@ -40,7 +43,7 @@ Complete reference for all CLI flags and their interactions.
 
 ### Branch Management
 
-Control how NyarlathotIA creates and manages Git branches for your work.
+Control how Nyia Keeper creates and manages Git branches for your work.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -60,9 +63,30 @@ Control how NyarlathotIA creates and manages Git branches for your work.
 | Flag | Description |
 |------|-------------|
 | `--build-custom-image` | Build with user overlay Dockerfiles |
+| `--base-image <image>` | Override base image for overlay build (dev only). Mutually exclusive with `--flavor` |
 | `--no-cache` | Force rebuild without Docker cache (requires `--build`* or `--build-custom-image`) |
 
-*`--build` is dev-only and not available in runtime distribution.
+*`--build` and `--base-image` are dev-only and not available in runtime distribution.
+
+**`--base-image`**: Override which image the overlay builds on top of. Useful for testing overlays against locally-built flavor images:
+
+```bash
+# Build overlay on a local flavor image:
+nyia-claude --build-custom-image --base-image nyiakeeper/claude-python:dev-feature
+```
+
+Overlay Dockerfiles must follow this pattern:
+```dockerfile
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+USER root
+RUN apt-get update && apt-get install -y your-packages && rm -rf /var/lib/apt/lists/*
+USER node
+RUN pip install --no-cache-dir your-python-packages
+```
+
+See [DEV_GUIDE_FLAVORS_OVERLAYS.md](DEV_GUIDE_FLAVORS_OVERLAYS.md) for full overlay documentation.
 
 ### Image Selection
 
@@ -85,8 +109,32 @@ Choose which Docker image to run.
 - `cypress` - E2E testing with headless Chromium
 - `expo` - React Native with Expo CLI
 - `php-react` - PHP 8.2 + React fullstack
+- `rust-tauri` - Rust, Cargo, Tauri v2, clippy, rustfmt, Node.js 22
 
 **See also**: [USER_GUIDE_FLAVORS_OVERLAYS.md](USER_GUIDE_FLAVORS_OVERLAYS.md) for flavor details.
+
+### Agent Personas
+
+Select or list agent personas for the session. See [assistant-agents-matrix.md](assistant-agents-matrix.md) for per-assistant capabilities.
+
+| Flag | Description |
+|------|-------------|
+| `--agent <name>` | Select agent persona (Claude, OpenCode, Vibe: direct mapping; Codex: guidance-only) |
+| `--list-agents` | List available agent personas (host-side discovery, no container needed) |
+
+**Scope precedence**: `--agent` (session) > project-local agents > global agents > assistant default.
+
+**Agent name rules**: lowercase letters, numbers, and hyphens only. Max 64 characters.
+
+```bash
+# List available agents
+nyia-claude --list-agents
+
+# Use a specific agent
+nyia-claude --agent reviewer
+nyia-vibe --agent plan
+nyia-opencode --agent my-custom-agent
+```
 
 ### RAG (Codebase Search)
 
@@ -148,6 +196,7 @@ System-level operations.
 |---------------|---------------------|--------|
 | `--create` | `--work-branch` | `--create` specifies what to create |
 | `--no-cache` | `--build`* or `--build-custom-image` | Cache bypass applies to builds |
+| `--base-image` | `--build-custom-image` | Base image override applies to custom builds |
 | `--rag-verbose` | `--rag` | Verbose mode for RAG |
 | `--rag-model` | `--rag` | Model selection for RAG |
 | `--force` | `--login` | Force applies to login |
@@ -166,6 +215,7 @@ System-level operations.
 | `--current-branch` | `--work-branch` | One stays, the other switches |
 | `--current-branch` | `--create` | Nothing to create in current-branch mode |
 | `--current-branch` | Workspace mode | Workspace requires branch sync across repos |
+| `--base-image` | `--flavor` | Base image override replaces flavor selection |
 
 ### Compatible Combinations
 
@@ -224,7 +274,7 @@ nyia-claude --build-custom-image
 nyia-claude --build-custom-image --no-cache
 
 # Then use your custom image
-nyia-claude --image nyarlathotia-claude-custom
+nyia-claude --image nyiakeeper/claude-custom
 ```
 
 ### Codebase Search
