@@ -51,24 +51,23 @@ fi
 
 # Platform-aware Docker user mapping
 get_docker_user_args() {
-    if is_macos; then
-        # On macOS with Docker Desktop, use default user mapping
-        # Docker Desktop handles file permissions differently
+    if uses_docker_desktop; then
+        # Docker Desktop (macOS + WSL2) handles file permissions differently
         echo ""
     else
-        # On Linux, preserve host user mapping
+        # On native Linux, preserve host user mapping
         echo "--user $(id -u):$(id -g)"
     fi
 }
 
 # Platform-aware Docker network configuration
 get_docker_network_args() {
-    if is_macos; then
-        # On macOS, --network host is not supported in Docker Desktop
+    if uses_docker_desktop; then
+        # Docker Desktop (macOS + WSL2) doesn't support --network host
         # Use default bridge network
         echo ""
     else
-        # On Linux, use host networking for direct access
+        # On native Linux, use host networking for direct access
         echo "--network host"
     fi
 }
@@ -77,8 +76,8 @@ get_docker_network_args() {
 check_docker_availability() {
     if ! command -v docker >/dev/null 2>&1; then
         print_error "Docker is not installed"
-        if is_macos; then
-            print_info "Install Docker Desktop for Mac from: https://docs.docker.com/desktop/mac/install/"
+        if uses_docker_desktop; then
+            print_info "Install Docker Desktop from: https://docs.docker.com/desktop/install/"
         elif is_linux; then
             local pkg_mgr=$(detect_package_manager)
             case "$pkg_mgr" in
@@ -90,12 +89,16 @@ check_docker_availability() {
         fi
         return 1
     fi
-    
+
     if ! docker info >/dev/null 2>&1; then
         print_error "Docker is not running"
-        if is_macos; then
+        if uses_docker_desktop; then
             print_info "Start Docker Desktop application"
-            print_info "Or check if Docker Desktop is installed and running in Applications"
+            if is_wsl2; then
+                print_info "Ensure 'Use the WSL 2 based engine' is enabled in Docker Desktop settings"
+            else
+                print_info "Or check if Docker Desktop is installed and running in Applications"
+            fi
         elif is_linux; then
             print_info "Start Docker service: sudo systemctl start docker"
             print_info "Enable Docker service: sudo systemctl enable docker"
@@ -2294,7 +2297,9 @@ login_assistant() {
         -e NYIA_CONTEXT_DIR="$config_dir_name"
     )
 
-    if [[ "$auth_method" == "chatgpt_signin" ]]; then
+    if [[ "$auth_method" == "chatgpt_signin" ]] && ! uses_docker_desktop; then
+        # Native Linux needs --network host for OAuth callback
+        # Docker Desktop (macOS/WSL2) uses bridge network by default
         docker_opts+=(--network host)
     fi
 

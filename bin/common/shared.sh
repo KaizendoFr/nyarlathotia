@@ -51,6 +51,38 @@ is_linux() {
     [[ "$(get_platform)" == "linux" ]]
 }
 
+# WSL2 detection — cached to avoid repeated /proc/version reads
+# Returns true when running inside Windows Subsystem for Linux v2
+_NYIA_IS_WSL2=""
+is_wsl2() {
+    if [[ -z "$_NYIA_IS_WSL2" ]]; then
+        if [[ -f /proc/version ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
+            _NYIA_IS_WSL2="true"
+        elif [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+            # Fallback: WSL sets this env var in all distributions
+            _NYIA_IS_WSL2="true"
+        else
+            _NYIA_IS_WSL2="false"
+        fi
+    fi
+    [[ "$_NYIA_IS_WSL2" == "true" ]]
+}
+
+# Docker Desktop detection — true for macOS and WSL2
+# Docker Desktop uses a Hyper-V VM, so --network host and --user mapping
+# behave differently than native Linux Docker Engine
+uses_docker_desktop() {
+    is_macos || is_wsl2
+}
+
+# NTFS path heuristic — checks if a path is on a Windows drive mount
+# Assumes default WSL2 automount: /mnt/<single-letter>/ = Windows drive
+# Limitation: could false-positive on custom /mnt/x/ mounts, but this
+# matches the standard WSL2 configuration
+is_ntfs_path() {
+    [[ "${1:-}" == /mnt/[a-z]/* ]]
+}
+
 # Configuration
 get_project_home() {
     # Get the base directory for the project

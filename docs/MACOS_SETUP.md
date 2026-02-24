@@ -96,13 +96,15 @@ nyia-claude --login
 
 ### Docker Desktop Differences
 
-Nyia Keeper automatically detects macOS and adjusts:
+Nyia Keeper automatically detects macOS (and WSL2) and adjusts:
 
-| Feature | Linux | macOS |
-|---------|-------|-------|
+| Feature | Native Linux | macOS / WSL2 |
+|---------|-------------|--------------|
 | Network mode | `--network host` | Bridge (default) |
 | User mapping | `--user $(id -u):$(id -g)` | Docker Desktop handles |
 | Ollama access | `localhost:11434` | `host.docker.internal:11434` |
+
+> WSL2 users have identical Docker Desktop behavior. See [WSL2 Setup Guide](WSL2_SETUP.md).
 
 ### File Permissions
 

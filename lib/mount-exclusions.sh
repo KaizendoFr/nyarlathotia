@@ -24,14 +24,18 @@ if ! declare -f portable_sha256sum >/dev/null 2>&1; then
 fi
 
 # Platform-aware case sensitivity for file matching
+# Optional argument: project path — used to detect NTFS mounts on WSL2
 get_find_case_args() {
-    # On macOS with case-insensitive filesystem, provide both case-sensitive and insensitive options
+    local project_path="${1:-}"
     if [[ "$(uname -s)" == "Darwin" ]]; then
-        # For macOS, we'll use both -name and -iname to catch case variations
+        # macOS: case-insensitive filesystem
+        echo "-iname"
+    elif [[ -n "$project_path" ]] && is_ntfs_path "$project_path"; then
+        # WSL2 NTFS mount: case-insensitive filesystem
         echo "-iname"
     else
-        # Linux filesystems are typically case-sensitive
-        echo "-name" 
+        # Native Linux: case-sensitive filesystem
+        echo "-name"
     fi
 }
 
@@ -481,7 +485,7 @@ create_volume_args() {
                 scanned_excluded_dirs+=("$rel_path")
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
                 print_verbose "Excluding directory: $rel_path"
-            done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+            done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
         done < <(echo "$dir_patterns" | tr ' ' '\n')
 
         # Second: scan files, skip if under excluded directory
@@ -506,7 +510,7 @@ create_volume_args() {
 
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
                 print_verbose "Excluding file: $rel_path"
-            done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+            done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
         done < <(echo "$patterns" | tr ' ' '\n')
         
         # KISS: Write cache for next time (simple approach)
