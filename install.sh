@@ -13,18 +13,18 @@ echo "🚀 Installing Nyia Keeper..."
 PUBLIC_REPO="KaizendoFr/nyia-keeper"
 
 # Allow specifying version via environment variable or argument
-if [[ -n "$1" ]]; then
+if [[ -n "${1:-}" ]]; then
     # If argument provided, use specific tag
     RELEASE_TYPE="tags/$1"
     echo "📦 Installing specific version: $1"
-elif [[ -n "$NYIA_VERSION" ]]; then
+elif [[ -n "${NYIA_VERSION:-}" ]]; then
     # If environment variable set, use it
     RELEASE_TYPE="tags/$NYIA_VERSION"
     echo "📦 Installing specific version: $NYIA_VERSION"
 else
     # Default to latest release (pipeline may replace with specific tag for versioned releases)
-    RELEASE_TYPE="tags/v0.1.0-alpha.45"
-    echo "📦 Installing version: v0.1.0-alpha.45"
+    RELEASE_TYPE="tags/v0.1.0-alpha.46"
+    echo "📦 Installing version: v0.1.0-alpha.46"
 fi
 
 # Find release with debugging
