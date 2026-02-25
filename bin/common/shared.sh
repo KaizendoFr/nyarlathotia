@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later OR Proprietary
 # Copyright (c) 2024 Nyia Keeper Contributors
 
-# shared.sh - Common utility functions for nyarlathotepIA multi-provider system
+# shared.sh - Common utility functions for Nyia Keeper multi-provider system
 # Shared across all providers: claude, gemini, codestral, chatgpt
 
 # Colors for output
@@ -342,7 +342,7 @@ get_container_name() {
     local project_path="$2"
     
     local project_name=$(basename "$project_path" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
-    echo "nyarlathotep-$provider-$project_name-$(date +%s)"
+    echo "nyiakeeper-$provider-$project_name-$(date +%s)"
 }
 
 # Common argument parsing helpers
@@ -687,6 +687,19 @@ get_image_name() {
         # Local: no prefix (clean names for dev)
         echo "nyiakeeper/${assistant}:latest"
     fi
+}
+
+# Check if an image reference points to a registry (not a local name)
+# Registry references have a dot or colon in the first path segment (before first /)
+# Examples: ghcr.io/org/image:tag (true), docker.io/library/nginx (true), localhost:5000/img (true)
+# Local:    nyiakeeper/claude:latest (false), myimage:tag (false)
+is_registry_image() {
+    local image="$1"
+    # No slash means no registry prefix (e.g., "ubuntu" or "myimage:tag")
+    [[ "$image" != */* ]] && return 1
+    local first_segment="${image%%/*}"
+    # Registry references have a dot (ghcr.io, docker.io) or colon (localhost:5000)
+    [[ "$first_segment" == *.* ]] || [[ "$first_segment" == *:* ]]
 }
 
 # Get full image name for flavor images with dev mode support

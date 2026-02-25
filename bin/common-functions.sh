@@ -2220,17 +2220,21 @@ login_assistant() {
         exit 1
     fi
     
-    # Check if the selected image exists
+    # Check if the selected image exists (with registry pull retry on inspect failure)
+    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+        # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
+        if is_registry_image "$full_image_name"; then
+            print_status "Image not found locally, pulling from registry..."
+            docker pull "$full_image_name" >/dev/null 2>&1 || true
+        fi
+    fi
     if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_status "Image not found: $full_image_name"
         print_status "Pulling image from registry for login..."
-        local registry=$(get_docker_registry)
-        local registry_image="${registry}/nyiakeeper-${assistant_cli}:latest"
-        if ! docker pull "$registry_image"; then
-            print_error "Failed to pull image: $registry_image"
+        if ! docker pull "$full_image_name"; then
+            print_error "Failed to pull image: $full_image_name"
             exit 1
         fi
-        full_image_name="$registry_image"
     fi
 
     # Ask provider hook for login command, fallback to modern commands
@@ -2701,7 +2705,14 @@ run_assistant() {
         exit 1
     fi
     
-    # Check if the selected image exists
+    # Check if the selected image exists (with registry pull retry on inspect failure)
+    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+        # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
+        if is_registry_image "$full_image_name"; then
+            print_status "Image not found locally, pulling from registry..."
+            docker pull "$full_image_name" >/dev/null 2>&1 || true
+        fi
+    fi
     if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_error "Image not found: $full_image_name"
 
@@ -2717,15 +2728,32 @@ run_assistant() {
         
         # Different behavior based on what caused the failure
         if [[ -n "$docker_image" ]]; then
-            # User explicitly specified --image: fail with helpful message, no building
-            echo ""
-            print_error "Explicit image selection failed"
-            print_info "💡 Usage examples:"
-            print_info "  nyia-${assistant_cli} --image dev                 # Use dev image"
-            print_info "  nyia-${assistant_cli} --image latest              # Use latest"
-            print_info "  nyia-${assistant_cli} --list-images               # List available"
-            print_info "  nyia-${assistant_cli}                             # Use default"
-            exit 1
+            # User explicitly specified --image: try registry pull before giving up
+            if is_registry_image "$full_image_name"; then
+                print_status "Trying to pull explicit image from registry..."
+                if docker pull "$full_image_name" >/dev/null 2>&1; then
+                    print_success "Image pulled: $full_image_name"
+                    # Pull succeeded — skip error, continue to docker run below
+                else
+                    echo ""
+                    print_error "Explicit image not found locally or in registry"
+                    print_info "💡 Usage examples:"
+                    print_info "  nyia-${assistant_cli} --image dev                 # Use dev image"
+                    print_info "  nyia-${assistant_cli} --image latest              # Use latest"
+                    print_info "  nyia-${assistant_cli} --list-images               # List available"
+                    print_info "  nyia-${assistant_cli}                             # Use default"
+                    exit 1
+                fi
+            else
+                echo ""
+                print_error "Explicit image selection failed"
+                print_info "💡 Usage examples:"
+                print_info "  nyia-${assistant_cli} --image dev                 # Use dev image"
+                print_info "  nyia-${assistant_cli} --image latest              # Use latest"
+                print_info "  nyia-${assistant_cli} --list-images               # List available"
+                print_info "  nyia-${assistant_cli}                             # Use default"
+                exit 1
+            fi
         elif [[ -n "$FLAVOR" ]]; then
             # User specified --flavor but image doesn't exist
             show_flavor_error "$assistant_cli" "$FLAVOR"
@@ -2735,14 +2763,11 @@ run_assistant() {
             echo ""
 
             print_status "Pulling image from registry..."
-            local registry=$(get_docker_registry)
-            local registry_image="${registry}/nyiakeeper-${assistant_cli}:latest"
-            if ! docker pull "$registry_image"; then
-                print_error "Failed to pull image: $registry_image"
+            if ! docker pull "$full_image_name"; then
+                print_error "Failed to pull image: $full_image_name"
                 print_info "💡 Contact administrator if registry access issues persist"
                 exit 1
             fi
-            full_image_name="$registry_image"
         fi
     else
         print_success "Image found: $full_image_name"

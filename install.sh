@@ -5,12 +5,12 @@
 # Nyia Keeper Public Installer
 # Downloads release tarball and runs the real installer inside it
 
-set -e
+set -euo pipefail
 
 echo "🚀 Installing Nyia Keeper..."
 
 # Configuration
-PUBLIC_REPO="KaizendoFr/nyiakeeper"
+PUBLIC_REPO="KaizendoFr/nyia-keeper"
 
 # Allow specifying version via environment variable or argument
 if [[ -n "$1" ]]; then
@@ -23,8 +23,8 @@ elif [[ -n "$NYIA_VERSION" ]]; then
     echo "📦 Installing specific version: $NYIA_VERSION"
 else
     # Default to latest release (pipeline may replace with specific tag for versioned releases)
-    RELEASE_TYPE="tags/v0.1.0-alpha.44"
-    echo "📦 Installing version: v0.1.0-alpha.44"
+    RELEASE_TYPE="tags/v0.1.0-alpha.45"
+    echo "📦 Installing version: v0.1.0-alpha.45"
 fi
 
 # Find release with debugging
@@ -33,8 +33,7 @@ RELEASE_URL="https://api.github.com/repos/$PUBLIC_REPO/releases/$RELEASE_TYPE"
 echo "Debug: API URL: $RELEASE_URL"
 
 # Get release info with error checking
-RELEASE_JSON=$(curl -s "$RELEASE_URL")
-if [[ -z "$RELEASE_JSON" ]]; then
+if ! RELEASE_JSON=$(curl -fsS "$RELEASE_URL"); then
     echo "❌ Failed to fetch release information from GitHub API"
     echo "   URL: $RELEASE_URL"
     echo "   Please check if the repository exists and has releases"
@@ -56,7 +55,15 @@ echo "📥 Downloading Nyia Keeper runtime..."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-curl -L "$TARBALL_URL" | tar -xz -C "$TEMP_DIR"
+TARBALL_FILE="$TEMP_DIR/nyiakeeper-runtime.tar.gz"
+if ! curl -fL --retry 3 --retry-delay 1 -o "$TARBALL_FILE" "$TARBALL_URL"; then
+    echo "❌ Failed to download release tarball"
+    echo "   URL: $TARBALL_URL"
+    echo "   Please verify the release exists and contains nyiakeeper-runtime.tar.gz"
+    exit 1
+fi
+
+tar -xzf "$TARBALL_FILE" -C "$TEMP_DIR"
 
 echo "🔧 Running real installer..."
 cd "$TEMP_DIR"
