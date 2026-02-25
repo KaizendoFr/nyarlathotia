@@ -955,7 +955,7 @@ check_docker_available() {
 }
 
 check_docker_running() {
-    if ! /usr/bin/docker info >/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
         print_error "Docker daemon not running"
         print_fix "Start Docker daemon:"
         print_fix "  sudo systemctl start docker"
@@ -1428,7 +1428,7 @@ build_custom_image() {
 check_docker_image() {
     local image_name="$1"
 
-    if ! /usr/bin/docker image inspect "$image_name" >/dev/null 2>&1; then
+    if ! docker image inspect "$image_name" >/dev/null 2>&1; then
         return 1
     fi
     return 0
@@ -1854,7 +1854,7 @@ run_debug_shell() {
     # Try to pull image if using registry
     if [[ "$full_image_name" == ghcr.io/* ]]; then
         print_status "Pulling image from registry: $full_image_name"
-        /usr/bin/docker pull "$full_image_name" 2>/dev/null || {
+        docker pull "$full_image_name" 2>/dev/null || {
             print_warning "Failed to pull $full_image_name - using local image if available"
         }
     fi
@@ -1868,7 +1868,7 @@ run_debug_shell() {
     fi
 
     # Direct bash execution, no entrypoint
-    /usr/bin/docker run -it --rm \
+    docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
         --entrypoint bash \
@@ -2062,7 +2062,7 @@ run_docker_container() {
     # Try to pull image if using registry
     if [[ "$full_image_name" == ghcr.io/* ]]; then
         print_status "Pulling image from registry: $full_image_name"
-        /usr/bin/docker pull "$full_image_name" 2>/dev/null || {
+        docker pull "$full_image_name" 2>/dev/null || {
             print_warning "Failed to pull $full_image_name - using local image if available"
         }
     fi
@@ -2075,7 +2075,7 @@ run_docker_container() {
         print_verbose "Added OpenAI credential mounts for codex"
     fi
 
-    /usr/bin/docker run -it --rm \
+    docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
         -w "$container_path" \
@@ -2221,14 +2221,14 @@ login_assistant() {
     fi
     
     # Check if the selected image exists (with registry pull retry on inspect failure)
-    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+    if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
         if is_registry_image "$full_image_name"; then
             print_status "Image not found locally, pulling from registry..."
             docker pull "$full_image_name" >/dev/null 2>&1 || true
         fi
     fi
-    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+    if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_status "Image not found: $full_image_name"
         print_status "Pulling image from registry for login..."
         if ! docker pull "$full_image_name"; then
@@ -2312,7 +2312,7 @@ login_assistant() {
         print_status "🐚 Debug shell mode in login container"
         print_status "You can manually run: ${login_cmd[*]}"
         
-        /usr/bin/docker run -it --rm \
+        docker run -it --rm \
             --entrypoint bash \
             "${docker_opts[@]}" \
             "$full_image_name"
@@ -2386,7 +2386,7 @@ EOF
             chmod +x "$wrapper_script"
 
             # Run with wrapper script
-            /usr/bin/docker run -it --rm \
+            docker run -it --rm \
                 "${docker_opts[@]}" \
                 -v "$wrapper_script":/tmp/login-wrapper.sh:ro \
                 --entrypoint /tmp/login-wrapper.sh \
@@ -2401,7 +2401,7 @@ EOF
             fi
         else
             # Normal login for other assistants
-            /usr/bin/docker run -it --rm \
+            docker run -it --rm \
                 "${docker_opts[@]}" \
                 "$full_image_name" "${login_cmd[@]}"
         fi
@@ -2706,14 +2706,14 @@ run_assistant() {
     fi
     
     # Check if the selected image exists (with registry pull retry on inspect failure)
-    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+    if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
         if is_registry_image "$full_image_name"; then
             print_status "Image not found locally, pulling from registry..."
             docker pull "$full_image_name" >/dev/null 2>&1 || true
         fi
     fi
-    if ! /usr/bin/docker image inspect "$full_image_name" >/dev/null 2>&1; then
+    if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         print_error "Image not found: $full_image_name"
 
         # Show available images for reference (convert dash-form config name to slash-form)
