@@ -103,11 +103,8 @@ Choose which Docker image to run.
 
 **Available flavors**:
 - `python` - pytest, black, mypy, ruff, isort, ipython
-- `node` - yarn, pnpm, typescript, biome, vitest, tsx
 - `php` - PHP 8.3, Composer, PHPUnit, PHPStan
-- `react` - vite, storybook, testing-library + node tools
-- `cypress` - E2E testing with headless Chromium
-- `expo` - React Native with Expo CLI
+- `node` - Node.js 22, yarn, pnpm, typescript, biome, vitest, vite, storybook, cypress, expo-cli, eas-cli
 - `php-react` - PHP 8.2 + React fullstack
 - `rust-tauri` - Rust, Cargo, Tauri v2, clippy, rustfmt, Node.js 22
 

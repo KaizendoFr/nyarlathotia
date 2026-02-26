@@ -8,10 +8,7 @@ This guide explains how to use pre-built flavors and create custom overlays to e
 |-----------|-----|---------|
 | Python dev tools (pytest, black, mypy) | **Flavor** | `nyia-claude --flavor python` |
 | PHP dev tools (PHPUnit, PHPStan) | **Flavor** | `nyia-claude --flavor php` |
-| Node.js dev tools (typescript, biome) | **Flavor** | `nyia-claude --flavor node` |
-| React dev tools (vite, storybook) | **Flavor** | `nyia-claude --flavor react` |
-| Cypress E2E testing | **Flavor** | `nyia-claude --flavor cypress` |
-| React Native/Expo | **Flavor** | `nyia-claude --flavor expo` |
+| Node.js / React / Cypress / Expo | **Flavor** | `nyia-claude --flavor node` |
 | PHP + React fullstack | **Flavor** | `nyia-claude --flavor php-react` |
 | Rust + Tauri v2 desktop apps | **Flavor** | `nyia-claude --flavor rust-tauri` |
 | Something else (custom packages) | **Overlay** | Create Dockerfile, then `--build-custom-image` |
@@ -38,10 +35,7 @@ nyia-claude --flavors-list
 |--------|----------------|
 | `python` | pytest, pytest-cov, black, mypy, ruff, isort, ipython |
 | `php` | PHP 8.3, Composer, PHPUnit, PHPStan, PHP-CS-Fixer |
-| `node` | yarn, pnpm, typescript, @biomejs/biome, vitest, tsx, nodemon |
-| `react` | node tools + vite, create-vite, storybook, @testing-library/react |
-| `cypress` | Cypress E2E testing with headless Chromium (for AI-assisted testing) |
-| `expo` | expo-cli, eas-cli, yarn (React Native with cloud builds) |
+| `node` | Node.js 22, yarn, pnpm, typescript, biome, vitest, vite, storybook, cypress (headless Chromium), expo-cli, eas-cli |
 | `php-react` | PHP 8.2 + React + Storybook + Jest + Cypress + PHPUnit (fullstack) |
 | `rust-tauri` | Rust, Cargo, Tauri v2 CLI, clippy, rustfmt, cargo-watch, Node.js 22 |
 

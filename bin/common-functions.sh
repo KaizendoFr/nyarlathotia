@@ -2577,7 +2577,7 @@ list_assistant_flavors() {
         done < "$flavors_file"
     else
         # Fallback if file missing
-        echo "  python, php, node, react, cypress, expo, php-react"
+        echo "  python, php, node, php-react, rust-tauri"
         echo ""
         echo "  (Run from installation directory for full descriptions)"
     fi
@@ -2585,7 +2585,7 @@ list_assistant_flavors() {
     echo ""
     echo "Usage:"
     echo "  nyia-${assistant_name} --flavor python -p \"Write pytest tests\""
-    echo "  nyia-${assistant_name} --flavor react -p \"Create Storybook stories\""
+    echo "  nyia-${assistant_name} --flavor node -p \"Create Storybook stories\""
     echo ""
     echo "Note: Flavors are pulled from registry on first use."
 }

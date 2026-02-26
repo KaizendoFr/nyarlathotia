@@ -192,7 +192,7 @@ nyia-claude --status
 
 # Use language flavor
 nyia-claude --flavor python -p "Write pytest tests"
-nyia-claude --flavor react -p "Create a React component"
+nyia-claude --flavor node -p "Create a React component"
 
 # Debug mode
 nyia-claude --verbose -p "your prompt"
