@@ -142,7 +142,7 @@ get_assistant_arg_desc() {
     case "$1" in
         "--image") echo "Select specific Docker image (tag or repo:tag)" ;;
         "--flavor") echo "Select assistant flavor/variant (e.g., node, python, rust)" ;;
-        "--flavors-list") echo "List available flavors for this assistant" ;;
+        "--list-flavors") echo "List available flavors for this assistant" ;;
         "--no-cache") echo "Force Docker rebuild without cache (use with --build or --build-custom-image)" ;;
         "--status") echo "Show assistant status, configs, and available overlays" ;;
         "--list-images") echo "List all available Docker images for this assistant" ;;
@@ -171,7 +171,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --flavors-list --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --agent --list-agents --rag --rag-verbose"
+    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --agent --list-agents --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -300,13 +300,18 @@ Quick Start:
   nyia-${assistant_name} --status             # Show configuration & overlays
   nyia-${assistant_name} -p "your prompt"     # Use assistant
   nyia-${assistant_name} --build-custom-image  # Build with your overlays
+EOF
+
+    if ! declare -f is_development_mode >/dev/null 2>&1; then
+    cat << EOF
 
 Power User Overlays:
   Create overlay at: ~/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile
   Then run: nyia-${assistant_name} --build-custom-image
-  
+
   Example overlay content:
 EOF
+    fi
     
     # Show available overlay templates with descriptions
     if [[ -n "$overlay_templates" ]]; then
@@ -358,6 +363,10 @@ Workspace Mode (Multi-Repository):
   Same branch created on all workspace repos for coordinated work
   RAG disabled in workspace mode (multi-repo indexing not yet supported)
 
+Flavors:
+  --flavor <name>          # Select language flavor (e.g., python, node, rust-tauri)
+  --list-flavors           # List available flavors for this assistant
+
 Power User:
   --build-custom-image     # Build custom image with overlays
   --no-cache               # Force rebuild without cache
@@ -394,6 +403,7 @@ Examples:
   nyia-${assistant_name} --status              # Check configuration
 EOF
 
+    if ! declare -f is_development_mode >/dev/null 2>&1; then
     echo ""
     echo "  # End-user examples:"
     local registry=$(get_docker_registry)
@@ -404,6 +414,7 @@ RUN apt-get update && apt-get install -y your-tools
 OVERLAY
   nyia-${assistant_name} --build-custom-image  # Build custom image
 EOF
+    fi
 
     cat << EOF
 
@@ -505,7 +516,7 @@ parse_assistant_args() {
                 if [[ -z "${2:-}" ]]; then
                     echo "Error: --flavor requires an argument" >&2
                     echo "Usage: --flavor <flavor-name>" >&2
-                    echo "Run --flavors-list to see available flavors" >&2
+                    echo "Run --list-flavors to see available flavors" >&2
                     exit 1
                 fi
                 if ! validate_flavor "$2"; then
@@ -514,7 +525,7 @@ parse_assistant_args() {
                 export FLAVOR="$2"
                 shift 2
                 ;;
-            --flavors-list)
+            --list-flavors|--flavors-list)
                 export LIST_FLAVORS="true"
                 shift
                 ;;

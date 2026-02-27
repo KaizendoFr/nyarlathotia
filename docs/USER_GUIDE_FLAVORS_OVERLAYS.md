@@ -26,7 +26,7 @@ Flavors are specialized images pre-built with common development tools. They're 
 ### List Available Flavors
 
 ```bash
-nyia-claude --flavors-list
+nyia-claude --list-flavors
 ```
 
 ### Current Flavors
@@ -169,7 +169,7 @@ The base image has a configured entrypoint. Don't change it unless you know what
 ❌ Error: Flavor 'nodejs' not found
 ```
 
-**Solution:** Check available flavors with `--flavors-list`. Did you mean `node` instead of `nodejs`?
+**Solution:** Check available flavors with `--list-flavors`. Did you mean `node` instead of `nodejs`?
 
 ### "Cannot pull image"
 
@@ -204,7 +204,7 @@ Error: No such image: nyiakeeper/claude-custom
 
 | Task | Command |
 |------|---------|
-| List flavors | `nyia-claude --flavors-list` |
+| List flavors | `nyia-claude --list-flavors` |
 | Use Python flavor | `nyia-claude --flavor python` |
 | Use PHP flavor | `nyia-claude --flavor php` |
 | Build custom overlay | `nyia-claude --build-custom-image` |

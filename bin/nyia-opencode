@@ -13,7 +13,7 @@ case "$(uname -s)" in
         config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
         ;;
     Darwin*)
-        config_dir="$HOME/Library/Application Support/nyiakeeper"
+        config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
         ;;
     CYGWIN*|MINGW*|MSYS*)
         config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyiakeeper"

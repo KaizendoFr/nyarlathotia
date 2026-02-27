@@ -636,7 +636,7 @@ get_nyiakeeper_home() {
             config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
             ;;
         Darwin*)
-            config_dir="$HOME/Library/Application Support/nyiakeeper"
+            config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
             ;;
         CYGWIN*|MINGW*|MSYS*)
             config_dir="${APPDATA:-$HOME/AppData/Roaming}/nyiakeeper"
@@ -647,9 +647,18 @@ get_nyiakeeper_home() {
             ;;
     esac
     
-    # MIGRATION-COMPAT: auto-migrate old config dir if it exists
-    source "$HOME/.local/lib/nyiakeeper/migration-compat.sh" 2>/dev/null && \
+    # MIGRATION-COMPAT: source migration helpers
+    source "$HOME/.local/lib/nyiakeeper/migration-compat.sh" 2>/dev/null
+
+    # MIGRATION-COMPAT: macOS Library → ~/.config migration (remove after v0.2.x)
+    if [[ "$(uname -s)" == Darwin* ]] && declare -f migrate_macos_library_path &>/dev/null; then
+        migrate_macos_library_path "$HOME/Library/Application Support/nyiakeeper" "$config_dir"
+    fi
+
+    # MIGRATION-COMPAT: nyarlathotia → nyiakeeper rename migration
+    if declare -f migrate_config_dir_if_needed &>/dev/null; then
         migrate_config_dir_if_needed "$config_dir"
+    fi
 
     ensure_directory_exists "$config_dir"
 
@@ -713,6 +722,109 @@ backup_assistant_config() {
                 print_verbose "Pruned old config backup: $old_dir"
             done
         fi
+    fi
+}
+
+# === USER SKILL PROPAGATION ===
+
+# Copy user skills from central directory to assistant's mounted config dir.
+# Only copies directories containing SKILL.md (no-clobber: skips existing).
+# Target is the host path mounted into container, so skills are visible in session.
+propagate_user_skills() {
+    local assistant_cli="$1"
+    local nyiakeeper_home="$2"
+
+    local source_dir="$nyiakeeper_home/skills"
+    local target_dir="$nyiakeeper_home/$assistant_cli/skills"
+
+    # Silent no-op if user hasn't created a skills directory
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for skill_dir in "$source_dir"/*/; do
+        # Skip if glob didn't match (no subdirectories)
+        [[ -d "$skill_dir" ]] || continue
+
+        local skill_name=$(basename "$skill_dir")
+
+        # Only copy directories containing SKILL.md
+        if [[ ! -f "$skill_dir/SKILL.md" ]]; then
+            print_verbose "Skipping user skill '$skill_name': no SKILL.md"
+            continue
+        fi
+
+        # No-clobber: skip if target already exists
+        if [[ -d "$target_dir/$skill_name" ]]; then
+            print_verbose "User skill '$skill_name' already exists at target, skipping"
+            ((skipped++))
+            continue
+        fi
+
+        # Copy skill directory to assistant target
+        mkdir -p "$target_dir"
+        cp -r "$skill_dir" "$target_dir/$skill_name"
+        print_verbose "Propagated user skill '$skill_name' to $assistant_cli"
+        ((copied++))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied user skill(s) to $assistant_cli ($skipped already existed)"
+    fi
+}
+
+# Propagate user agents from central $NYIAKEEPER_HOME/agents/ to
+# the launching assistant's config agent directory (host-side, before Docker).
+# Per-launch copy with no-clobber semantics.
+# Skips Codex and Gemini (config-based agents, not file-based).
+propagate_user_agents() {
+    local assistant_cli="$1"
+    local nyiakeeper_home="$2"
+
+    # Codex and Gemini use config-based agents, not file-based
+    case "$assistant_cli" in
+        codex|gemini) return 0 ;;
+    esac
+
+    local source_dir="$nyiakeeper_home/agents"
+    local target_dir="$nyiakeeper_home/$assistant_cli/agents"
+
+    # Silent no-op if user hasn't created an agents directory
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for agent_file in "$source_dir"/*; do
+        # Skip if glob didn't match (empty directory)
+        [[ -e "$agent_file" ]] || continue
+
+        # Only copy regular files, skip dotfiles and directories
+        local filename=$(basename "$agent_file")
+        [[ "$filename" == .* ]] && continue
+        [[ -f "$agent_file" ]] || continue
+
+        # No-clobber: skip if target already exists
+        if [[ -f "$target_dir/$filename" ]]; then
+            print_verbose "User agent '$filename' already exists at target, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Copy agent file to assistant target
+        mkdir -p "$target_dir"
+        cp "$agent_file" "$target_dir/$filename"
+        print_verbose "Propagated user agent '$filename' to $assistant_cli"
+        copied=$((copied + 1))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied user agent(s) to $assistant_cli ($skipped already existed)"
     fi
 }
 
@@ -1851,6 +1963,12 @@ run_debug_shell() {
         print_verbose "Using direct mount (exclusions not available)"
     fi
 
+    # Isolate node_modules from host (same logic as run_docker_container)
+    if [[ "${FLAVOR:-}" == "node" ]]; then
+        VOLUME_ARGS+=("-v" "$container_path/node_modules")
+        print_verbose "Isolating node_modules with anonymous volume (flavor: ${FLAVOR})"
+    fi
+
     # Try to pull image if using registry
     if [[ "$full_image_name" == ghcr.io/* ]]; then
         print_status "Pulling image from registry: $full_image_name"
@@ -1867,10 +1985,17 @@ run_debug_shell() {
         print_verbose "Added OpenAI credential mounts for codex"
     fi
 
+    # Increase shared memory for Chromium-based testing tools
+    local shm_args=()
+    if [[ "${FLAVOR:-}" == "node" ]]; then
+        shm_args=(--shm-size=2g)
+    fi
+
     # Direct bash execution, no entrypoint
     docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
+        "${shm_args[@]}" \
         --entrypoint bash \
         "${VOLUME_ARGS[@]}" \
         -v "$project_data_dir":/data:rw \
@@ -1881,7 +2006,7 @@ run_debug_shell() {
         "${docker_env_args[@]}" \
         --name "$container_name" \
         "$full_image_name"
-    
+
     # Cleanup immediately after Docker run
     cleanup_env_file
     trap - EXIT
@@ -2044,9 +2169,18 @@ run_docker_container() {
         print_verbose "Using direct mount (exclusions not available)"
     fi
 
+    # Isolate node_modules from host (container gets its own writable copy)
+    # Prevents cross-platform native binary conflicts (linux/amd64 vs host arch)
+    # Must appear AFTER create_volume_args/get_workspace_volume_args so the
+    # anonymous volume shadows the host mount (later -v wins in Docker)
+    if [[ "${FLAVOR:-}" == "node" ]]; then
+        VOLUME_ARGS+=("-v" "$container_path/node_modules")
+        print_verbose "Isolating node_modules with anonymous volume (flavor: ${FLAVOR})"
+    fi
+
     print_verbose "Starting Docker container"
     print_verbose "Docker env args: ${docker_env_args[@]}"
-    
+
     # Verify mount source exists and is writable (critical for credential persistence)
     if [[ ! -d "$global_config_dir" ]]; then
         print_warning "Config directory missing, creating: $global_config_dir"
@@ -2075,9 +2209,17 @@ run_docker_container() {
         print_verbose "Added OpenAI credential mounts for codex"
     fi
 
+    # Increase shared memory for Chromium-based testing tools (Cypress, Playwright)
+    # Docker defaults /dev/shm to 64MB — Chromium needs at least 1-2GB to avoid OOM crashes
+    local shm_args=()
+    if [[ "${FLAVOR:-}" == "node" ]]; then
+        shm_args=(--shm-size=2g)
+    fi
+
     docker run -it --rm \
         $(get_docker_network_args) \
         $(get_docker_user_args) \
+        "${shm_args[@]}" \
         -w "$container_path" \
         "${VOLUME_ARGS[@]}" \
         -v "$project_data_dir":/data:rw \
@@ -2178,6 +2320,10 @@ login_assistant() {
     # Backup config before login (protects against corruption)
     backup_assistant_config "$global_config_dir"
 
+    # Propagate user skills and agents from central directory to assistant config
+    propagate_user_skills "$assistant_cli" "$nyia_home"
+    propagate_user_agents "$assistant_cli" "$nyia_home"
+
     # Source provider-specific hooks if they exist (ensure functions are available)
     local provider_hooks_file="$dockerfile_path/${assistant_cli}-hooks.sh"
     if [[ -f "$provider_hooks_file" ]]; then
@@ -2268,7 +2414,17 @@ login_assistant() {
             # Claude setup-token doesn't require additional flags
             ;;
         chatgpt_signin)
-            # Codex no longer requires an explicit flag for ChatGPT sign-in
+            if uses_docker_desktop; then
+                # Docker Desktop (macOS/WSL2): OAuth callback can't reach container.
+                # Codex binds callback server to 127.0.0.1:1455 (loopback only).
+                # Docker port forwarding routes to the container's bridge IP, not loopback.
+                # --device-auth uses URL + code polling instead (no callback server needed).
+                login_cmd+=("--device-auth")
+                print_info "Using device code authentication (Docker Desktop detected)"
+                print_info "Prerequisite: enable 'Device code login' in your ChatGPT security settings"
+                print_info "  Personal: ChatGPT Settings > Security"
+                print_info "  Workspace: Ask your admin to enable in workspace permissions"
+            fi
             ;;
 
     esac
@@ -2301,10 +2457,13 @@ login_assistant() {
         -e NYIA_CONTEXT_DIR="$config_dir_name"
     )
 
-    if [[ "$auth_method" == "chatgpt_signin" ]] && ! uses_docker_desktop; then
-        # Native Linux needs --network host for OAuth callback
-        # Docker Desktop (macOS/WSL2) uses bridge network by default
-        docker_opts+=(--network host)
+    if [[ "$auth_method" == "chatgpt_signin" ]]; then
+        if ! uses_docker_desktop; then
+            # Native Linux: host networking for direct OAuth callback access
+            # (Codex binds callback to 127.0.0.1, which works with shared network namespace)
+            docker_opts+=(--network host)
+        fi
+        # Docker Desktop: no port forwarding needed — --device-auth uses polling
     fi
 
     if [[ "$shell_mode" == "true" ]]; then
@@ -2632,6 +2791,10 @@ run_assistant() {
 
     # Backup config before launch (protects against corruption)
     backup_assistant_config "$global_config_dir"
+
+    # Propagate user skills and agents from central directory to assistant config
+    propagate_user_skills "$assistant_cli" "$nyiakeeper_home"
+    propagate_user_agents "$assistant_cli" "$nyiakeeper_home"
 
     # Get prompt filename for this assistant
     local prompt_filename=$(get_prompt_filename "$assistant_cli")

@@ -768,7 +768,7 @@ show_flavor_error() {
     echo "  • There was a network issue checking the registry" >&2
     echo "" >&2
     echo "Available options:" >&2
-    echo "  1. Use a different flavor: nyia-$assistant --flavors-list" >&2
+    echo "  1. Use a different flavor: nyia-$assistant --list-flavors" >&2
     echo "  2. Use default image: nyia-$assistant (without --flavor)" >&2
     echo "  3. Use custom image: nyia-$assistant --image your-image:tag" >&2
     echo "" >&2

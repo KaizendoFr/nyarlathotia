@@ -15,7 +15,7 @@ LIB_DIR="${INSTALL_DIR}/lib/nyiakeeper"
 # Platform-aware config path (must match entry points in bin/nyia-*)
 case "$(uname -s)" in
     Darwin*)
-        CONFIG_DIR="$HOME/Library/Application Support/nyiakeeper/config"
+        CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper/config"
         ;;
     *)
         CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper/config"

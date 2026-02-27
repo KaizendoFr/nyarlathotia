@@ -94,6 +94,12 @@ nyia-claude --login
 
 ## macOS-Specific Notes
 
+### Config Path
+
+Nyia Keeper stores configuration at `~/.config/nyiakeeper/` on all platforms (including macOS).
+
+If you previously used a version that stored config at `~/Library/Application Support/nyiakeeper/`, your data is auto-migrated on first run. The old directory is renamed to `~/Library/Application Support/nyiakeeper.migrated-from-library` as a marker. If both locations contain data, existing `~/.config/nyiakeeper/` files take priority (no-clobber merge). This migration support will be removed after v0.2.x.
+
 ### Docker Desktop Differences
 
 Nyia Keeper automatically detects macOS (and WSL2) and adjusts:

@@ -16,7 +16,7 @@ Complete reference for all CLI flags and their interactions.
 | `--flavor <name>` | Image | - | `--image`* | Use flavor image |
 | `--image <tag>` | Image | - | `--flavor`* | Use specific image |
 | `--list-images` | Image | - | - | List available images |
-| `--flavors-list` | Image | - | - | List available flavors |
+| `--list-flavors` | Image | - | - | List available flavors |
 | `--agent <name>` | Agent | - | - | Select agent persona for session |
 | `--list-agents` | Agent | - | - | List available agent personas |
 | `--rag` | RAG | Ollama | - | Enable codebase search |
@@ -97,7 +97,7 @@ Choose which Docker image to run.
 | `--flavor <name>` | Use a pre-built flavor image (e.g., `python`, `node`) |
 | `--image <tag>` | Use a specific image tag |
 | `--list-images` | List all available local images |
-| `--flavors-list` | List all available flavors |
+| `--list-flavors` | List all available flavors |
 
 **Precedence**: `--image` > `--flavor` > default
 

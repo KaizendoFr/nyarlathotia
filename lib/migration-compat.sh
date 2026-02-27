@@ -115,5 +115,54 @@ migrate_project_dir_if_needed() {
     fi
 }
 
+# Migrate macOS ~/Library/Application Support/nyiakeeper → ~/.config/nyiakeeper.
+# OS-agnostic function: caller gates on Darwin and passes source/target paths.
+# Rule: target wins — existing target files are never overwritten.
+# Source files preserved in marker dir for manual reconciliation.
+# MIGRATION-COMPAT: remove after v0.2.x
+migrate_macos_library_path() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local marker="${source_dir}.migrated-from-library"
+
+    # Already migrated (marker exists) or no source → nothing to do
+    [[ -d "$marker" ]] && return 0
+    [[ -d "$source_dir" ]] || return 0
+
+    echo "[MIGRATION] Migrating macOS Library path: $source_dir -> $target_dir" >&2
+
+    if [[ ! -d "$target_dir" ]]; then
+        # Target absent → move source to target, leave marker
+        mkdir -p "$(dirname "$target_dir")"
+        if mv "$source_dir" "$target_dir"; then
+            mkdir "$marker"
+            echo "[MIGRATION] Complete. Old Library path migrated." >&2
+        else
+            echo "[MIGRATION] ERROR: Failed to move $source_dir -> $target_dir" >&2
+        fi
+    else
+        # Both exist → merge with target-wins rule (file-level no-clobber)
+        # Copy only files/dirs that don't exist at target
+        if command -v rsync &>/dev/null; then
+            rsync -a --ignore-existing "$source_dir/" "$target_dir/"
+        else
+            # Fallback: manual file-by-file copy
+            find "$source_dir" -maxdepth 1 -mindepth 1 | while IFS= read -r item; do
+                local name
+                name=$(basename "$item")
+                if [[ ! -e "$target_dir/$name" ]]; then
+                    cp -a "$item" "$target_dir/$name"
+                fi
+            done
+        fi
+        if mv "$source_dir" "$marker"; then
+            echo "[MIGRATION] Complete. Old Library path merged (target wins)." >&2
+        else
+            echo "[MIGRATION] ERROR: Failed to rename $source_dir to marker" >&2
+        fi
+    fi
+}
+
 export -f _migrate_file_contents _remove_marker_if_exists \
-    migrate_config_dir_if_needed migrate_project_dir_if_needed
+    migrate_config_dir_if_needed migrate_project_dir_if_needed \
+    migrate_macos_library_path
