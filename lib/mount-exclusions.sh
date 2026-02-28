@@ -57,13 +57,15 @@ This file was automatically excluded from the container mount because it may con
 This is a security feature to prevent accidental exposure of sensitive data to AI assistants.
 
 To include this file:
-- Use --disable-exclusions flag
-- Or add an override in .nyiakeeper/exclusions.conf
+- Use --disable-exclusions flag to disable all exclusions
+- Or add an override in .nyiakeeper/exclusions.conf:
+    !filename.yaml          (keeps all files named filename.yaml)
+    !path/to/specific.yaml  (keeps only that exact path)
 
 Nyia Keeper Mount Exclusions System
 EOF
     fi
-    
+
     # Create explanation directory
     if [[ ! -d "$excluded_dir" ]]; then
         mkdir -p "$excluded_dir"
@@ -75,8 +77,12 @@ This directory was automatically excluded from the container mount because it ma
 This is a security feature to prevent accidental exposure of sensitive data to AI assistants.
 
 ## To include this directory:
-- Use `--disable-exclusions` flag
-- Or add an override in `.nyiakeeper/exclusions.conf`
+- Use `--disable-exclusions` flag to disable all exclusions
+- Or add an override in `.nyiakeeper/exclusions.conf`:
+    ```
+    !dirname/          # keeps all directories named dirname
+    !path/to/dirname/  # keeps only that exact path
+    ```
 
 ---
 *Nyia Keeper Mount Exclusions System*
@@ -97,7 +103,7 @@ get_user_exclusion_patterns() {
         # Skip comments and empty lines
         [[ -z "$line" ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ "$line" =~ ^[[:space:]]*! ]] && continue  # Skip override attempts for now
+        [[ "$line" =~ ^[[:space:]]*! ]] && continue  # Override lines handled by get_user_override_patterns/dirs
         
         # Trim whitespace
         line=$(echo "$line" | xargs)
@@ -124,7 +130,7 @@ get_user_exclusion_dirs() {
         # Skip comments and empty lines
         [[ -z "$line" ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ "$line" =~ ^[[:space:]]*! ]] && continue  # Skip override attempts for now
+        [[ "$line" =~ ^[[:space:]]*! ]] && continue  # Override lines handled by get_user_override_patterns/dirs
         
         # Trim whitespace
         line=$(echo "$line" | xargs)
@@ -134,6 +140,51 @@ get_user_exclusion_dirs() {
         if [[ "$line" =~ /$ ]]; then
             # Remove trailing slash for consistency
             echo "${line%/}"
+        fi
+    done < "$exclusions_file"
+}
+
+# Get user-defined override patterns (files) from .nyiakeeper/exclusions.conf
+# Lines starting with ! negate an exclusion — the file stays visible to the container.
+# !filename      = basename match (matches any path ending in that name)
+# !path/to/file  = exact relative path match
+get_user_override_patterns() {
+    local project_path="${1:-$(pwd)}"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
+
+    [[ -f "$exclusions_file" ]] || return 0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ ! "$line" =~ ^[[:space:]]*! ]] && continue  # Only ! lines
+        line=$(echo "$line" | xargs)
+        line="${line#!}"  # Strip leading !
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ /$ ]] && continue  # Skip dir overrides (handled separately)
+        echo "$line"
+    done < "$exclusions_file"
+}
+
+# Get user-defined override patterns (directories) from .nyiakeeper/exclusions.conf
+# Lines starting with ! and ending with / negate a directory exclusion.
+# !dirname/       = basename match (any directory with that name)
+# !path/to/dir/   = exact relative path match
+get_user_override_dirs() {
+    local project_path="${1:-$(pwd)}"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
+
+    [[ -f "$exclusions_file" ]] || return 0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ ! "$line" =~ ^[[:space:]]*! ]] && continue  # Only ! lines
+        line=$(echo "$line" | xargs)
+        line="${line#!}"  # Strip leading !
+        [[ -z "$line" ]] && continue
+        if [[ "$line" =~ /$ ]]; then
+            echo "${line%/}"  # Remove trailing slash for consistency
         fi
     done < "$exclusions_file"
 }
@@ -299,47 +350,65 @@ get_exclusion_dirs() {
     echo ".terraform .terragrunt .pulumi .cdktf"
     
     # === CI/CD ===
-    echo ".jenkins .circleci .github/secrets .gitlab/secrets .buildkite .drone"
-    
+    echo ".jenkins .circleci .buildkite .drone"
+
     # === PACKAGE MANAGERS ===
     echo ".npm .yarn .pnpm .cargo .gem .pypi .nuget .m2 .ivy2 .sbt .gradle"
-    
+
     # === SECURITY & CERTIFICATES ===
-    echo ".ssh .gnupg .gpg .git-crypt vault consul certs certificates ssl tls pki"
-    
+    echo ".ssh .gnupg .gpg .git-crypt"
+
     # === MONITORING ===
     echo ".datadog .newrelic .dynatrace"
-    
+
     # === CLOUD FUNCTIONS ===
     echo ".serverless .netlify .vercel .amplify"
-    
+
     # === ORCHESTRATION TOOLS ===
     echo ".helm .kustomize .skaffold .tilt .garden"
-    
+
     # === SERVICE MESH ===
     echo ".istio .linkerd .consul"
-    
+
     # === DATABASES ===
     echo ".mysql .postgresql .mongodb .redis .elasticsearch"
-    
+
     # === MESSAGE QUEUES ===
     echo ".kafka .rabbitmq .nats"
-    
+
     # === DEVELOPMENT TOOLS ===
-    echo ".vscode-server .devcontainer/secrets .codespaces/secrets"
-    
+    echo ".vscode-server"
+
     # === BACKUP & STATE ===
-    echo "backups backup state states .backup .bak"
-    
-    # === GENERIC SECRETS ===
-    echo "secrets credentials private keys"
-    
+    echo ".backup .bak"
+
     # === INFRASTRUCTURE ===
     echo ".packer .kitchen .inspec"
     
     # === USER-DEFINED DIRECTORIES ===
     # Add directory patterns from .nyiakeeper/exclusions.conf
     get_user_exclusion_dirs "${1:-$(pwd)}"
+}
+
+# Bare-word directory patterns that are only safe near the project root.
+# These match common security dir names but also match legitimate package
+# names inside dependency trees (e.g., npm "private", "consul", "state").
+# Scanned at depth 2 only (project root + 1 level) to avoid false positives.
+# Note: "private" and bare "consul" removed — too many false positives.
+get_shallow_exclusion_dirs() {
+    # Security & certificates (bare-word variants)
+    echo "vault certs certificates ssl tls pki"
+    # Backup & state (bare-word variants)
+    echo "backups backup state states"
+    # Generic secrets (bare-word variants)
+    echo "secrets credentials keys"
+}
+
+# Slash-containing directory patterns that need find -path instead of -name.
+# find -name only matches the final component, so ".github/secrets" never matches.
+# These use -path "*/$pattern" to match correctly.
+get_exclusion_path_patterns() {
+    echo ".github/secrets .gitlab/secrets .devcontainer/secrets .codespaces/secrets"
 }
 
 # Global array for volume arguments
@@ -394,6 +463,45 @@ is_path_under_excluded_dir() {
     return 1  # False - not under any excluded directory
 }
 
+# Check if a directory exclusion pattern is a package-manager cache dir
+# These get writable tmpfs mounts instead of read-only placeholders,
+# so the container can use them (npm cache, cargo fetch, etc.) without
+# leaking data to the host
+is_package_manager_cache_pattern() {
+    case "$1" in
+        .npm|.yarn|.pnpm|.cargo|.gem|.pypi|.nuget|.m2|.ivy2|.sbt|.gradle)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
+# Check if a relative path is overridden by a user !pattern in exclusions.conf
+# Two match modes:
+# - Basename match: override has no slash → matches basename of rel_path
+# - Exact path match: override contains slash → must match rel_path exactly
+# Returns 0 (true) if overridden, 1 (false) otherwise
+is_path_overridden() {
+    local rel_path="$1"
+    shift
+    local -a overrides=("$@")
+    local base
+    base=$(basename "$rel_path")
+
+    for override in "${overrides[@]}"; do
+        [[ -z "$override" ]] && continue
+        # Exact relative path match (override contains a slash)
+        if [[ "$override" == */* ]] && [[ "$override" == "$rel_path" ]]; then
+            return 0
+        fi
+        # Basename match (no slash in override = match any path with that name)
+        if [[ "$override" != */* ]] && [[ "$override" == "$base" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Main function: populate volume arguments array with exclusions
 create_volume_args() {
     local project_path="$1"
@@ -426,6 +534,13 @@ create_volume_args() {
     # Check if cache is valid using the correct validation function
     if declare -f is_exclusions_cache_valid >/dev/null 2>&1 && is_exclusions_cache_valid "$project_path"; then
         print_verbose "Cache is valid, using cached exclusions"
+
+        # Load user override patterns for cache path too
+        local -a cache_file_overrides=()
+        local -a cache_dir_overrides=()
+        while IFS= read -r ov; do [[ -n "$ov" ]] && cache_file_overrides+=("$ov"); done < <(get_user_override_patterns "$project_path")
+        while IFS= read -r ov; do [[ -n "$ov" ]] && cache_dir_overrides+=("$ov"); done < <(get_user_override_dirs "$project_path")
+
         # Read cached lists
         local excluded_files_str=""
         local excluded_dirs_str=""
@@ -435,15 +550,27 @@ create_volume_args() {
                 excluded_dirs) excluded_dirs_str="$value" ;;
             esac
         done < "$cache_file"
-        
+
         # First: parse and mount excluded directories (MUST be before files!)
         local -a excluded_dir_array=()
         if [[ -n "$excluded_dirs_str" ]]; then
             IFS=',' read -ra excluded_dir_array <<< "$excluded_dirs_str"
             for rel_path in "${excluded_dir_array[@]}"; do
                 if [[ -n "$rel_path" ]]; then
-                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
-                    print_verbose "Excluding directory (cached): $rel_path"
+                    # Skip if user has overridden this directory
+                    if [[ ${#cache_dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${cache_dir_overrides[@]}"; then
+                        print_verbose "Override: keeping directory visible (cached): $rel_path"
+                        continue
+                    fi
+                    local dir_basename
+                    dir_basename=$(basename "$rel_path")
+                    if is_package_manager_cache_pattern "$dir_basename"; then
+                        VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_path/$rel_path,tmpfs-mode=1777")
+                        print_verbose "Excluding directory (cached, writable tmpfs): $rel_path"
+                    else
+                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                        print_verbose "Excluding directory (cached): $rel_path"
+                    fi
                 fi
             done
         fi
@@ -458,6 +585,11 @@ create_volume_args() {
                     print_verbose "Skipping file (parent dir excluded): $rel_path"
                     continue
                 fi
+                # Skip if user has overridden this file
+                if [[ ${#cache_file_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${cache_file_overrides[@]}"; then
+                    print_verbose "Override: keeping file visible (cached): $rel_path"
+                    continue
+                fi
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
                 print_verbose "Excluding file (cached): $rel_path"
             done
@@ -466,6 +598,12 @@ create_volume_args() {
         print_verbose "Cache invalid or missing, scanning filesystem"
         # Cache invalid or doesn't exist - scan filesystem
         local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
+
+        # Load user override patterns (!pattern in exclusions.conf)
+        local -a file_overrides=()
+        local -a dir_overrides=()
+        while IFS= read -r ov; do [[ -n "$ov" ]] && file_overrides+=("$ov"); done < <(get_user_override_patterns "$project_path")
+        while IFS= read -r ov; do [[ -n "$ov" ]] && dir_overrides+=("$ov"); done < <(get_user_override_dirs "$project_path")
 
         # First: scan and collect excluded directories (MUST be before files!)
         local -a scanned_excluded_dirs=()
@@ -482,11 +620,74 @@ create_volume_args() {
                     continue
                 fi
 
+                # Skip if user has overridden this directory
+                if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                    print_verbose "Override: keeping directory visible: $rel_path"
+                    continue
+                fi
+
                 scanned_excluded_dirs+=("$rel_path")
-                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
-                print_verbose "Excluding directory: $rel_path"
-            done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
+                # Package-manager cache dirs get writable tmpfs (container can use them)
+                # Security-sensitive dirs get read-only placeholder
+                if is_package_manager_cache_pattern "$pattern"; then
+                    VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_path/$rel_path,tmpfs-mode=1777")
+                    print_verbose "Excluding directory (writable tmpfs): $rel_path"
+                else
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                    print_verbose "Excluding directory: $rel_path"
+                fi
+            done < <(find "$project_path" -maxdepth "$max_depth" \
+                \( -name node_modules -o -name vendor -o -name site-packages \
+                   -o -name __pycache__ -o -name .venv -o -name venv \
+                   -o -name target \) -prune \
+                -o -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
         done < <(echo "$dir_patterns" | tr ' ' '\n')
+
+        # Shallow scan: bare-word patterns at depth 2 only (project root + 1 level)
+        # These match common security dir names but also match legitimate packages,
+        # so we limit depth to avoid false positives inside src/, lib/, etc.
+        local shallow_patterns=$(get_shallow_exclusion_dirs)
+        if [[ -n "$shallow_patterns" ]]; then
+            print_verbose "Shallow exclusion patterns (depth 2): $shallow_patterns"
+            while IFS=' ' read -r pattern; do
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$project_path/}"
+                    if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                        print_verbose "Skipping Nyia Keeper system directory: $rel_path"
+                        continue
+                    fi
+                    if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                        print_verbose "Override: keeping directory visible: $rel_path"
+                        continue
+                    fi
+                    scanned_excluded_dirs+=("$rel_path")
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                    print_verbose "Excluding directory (shallow): $rel_path"
+                done < <(find "$project_path" -maxdepth 2 -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
+            done < <(echo "$shallow_patterns" | tr ' ' '\n')
+        fi
+
+        # Path-based scan: slash-containing patterns that need find -path
+        # find -name only matches the final component, so ".github/secrets" needs -path
+        local path_patterns=$(get_exclusion_path_patterns)
+        if [[ -n "$path_patterns" ]]; then
+            print_verbose "Path-based exclusion patterns: $path_patterns"
+            while IFS=' ' read -r pattern; do
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$project_path/}"
+                    if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                        continue
+                    fi
+                    if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                        print_verbose "Override: keeping directory visible: $rel_path"
+                        continue
+                    fi
+                    scanned_excluded_dirs+=("$rel_path")
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                    print_verbose "Excluding directory (path): $rel_path"
+                done < <(find "$project_path" -maxdepth "$max_depth" -type d -path "*/$pattern" -print0 2>/dev/null)
+            done < <(echo "$path_patterns" | tr ' ' '\n')
+        fi
 
         # Second: scan files, skip if under excluded directory
         local patterns=$(get_exclusion_patterns "$project_path")
@@ -508,9 +709,19 @@ create_volume_args() {
                     continue
                 fi
 
+                # Skip if user has overridden this file
+                if [[ ${#file_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${file_overrides[@]}"; then
+                    print_verbose "Override: keeping file visible: $rel_path"
+                    continue
+                fi
+
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
                 print_verbose "Excluding file: $rel_path"
-            done < <(find "$project_path" -maxdepth "$max_depth" -type f $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
+            done < <(find "$project_path" -maxdepth "$max_depth" \
+                \( -name node_modules -o -name vendor -o -name site-packages \
+                   -o -name __pycache__ -o -name .venv -o -name venv \
+                   -o -name target \) -prune \
+                -o -type f $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
         done < <(echo "$patterns" | tr ' ' '\n')
         
         # KISS: Write cache for next time (simple approach)
@@ -532,6 +743,15 @@ create_volume_args() {
                     elif [[ "$mount_spec" == "/tmp/nyia-excluded-dir:$container_path/"* ]]; then
                         local dir_path="${mount_spec#*/tmp/nyia-excluded-dir:$container_path/}"
                         dir_path="${dir_path%:ro}"
+                        [[ -n "$dir_path" ]] && excluded_dirs["$dir_path"]=1
+                    fi
+                    ((i+=2))
+                elif [[ "${VOLUME_ARGS[$i]}" == "--mount" ]]; then
+                    local mount_spec="${VOLUME_ARGS[$((i+1))]}"
+                    # Parse: type=tmpfs,destination=/workspace/.pnpm,tmpfs-mode=1777
+                    if [[ "$mount_spec" == *"destination=$container_path/"* ]]; then
+                        local dir_path="${mount_spec#*destination=$container_path/}"
+                        dir_path="${dir_path%%,*}"  # Strip trailing options
                         [[ -n "$dir_path" ]] && excluded_dirs["$dir_path"]=1
                     fi
                     ((i+=2))
@@ -603,7 +823,11 @@ append_repo_volume_args() {
                         VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
                         print_verbose "Excluding file in repo: $rel_path"
                     fi
-                done < <(find "$repo_path" -maxdepth "$max_depth" -name "$pattern" -print0 2>/dev/null)
+                done < <(find "$repo_path" -maxdepth "$max_depth" \
+                    \( -name node_modules -o -name vendor -o -name site-packages \
+                       -o -name __pycache__ -o -name .venv -o -name venv \
+                       -o -name target \) -prune \
+                    -o -name "$pattern" -print0 2>/dev/null)
             done <<< "$patterns"
         fi
     fi
@@ -617,6 +841,10 @@ append_repo_volume_args() {
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
                 print_verbose "Excluding sensitive file in repo: $rel_path"
             fi
-        done < <(find "$repo_path" -maxdepth 3 -name "$pattern" -print0 2>/dev/null)
+        done < <(find "$repo_path" -maxdepth 3 \
+            \( -name node_modules -o -name vendor -o -name site-packages \
+               -o -name __pycache__ -o -name .venv -o -name venv \
+               -o -name target \) -prune \
+            -o -name "$pattern" -print0 2>/dev/null)
     done
 }

@@ -1963,10 +1963,11 @@ run_debug_shell() {
         print_verbose "Using direct mount (exclusions not available)"
     fi
 
-    # Isolate node_modules from host (same logic as run_docker_container)
+    # Isolate node_modules from host with tmpfs (writable by any user, container-only)
+    # tmpfs mode 1777 ensures node user (uid 1000) can write without ownership issues
     if [[ "${FLAVOR:-}" == "node" ]]; then
-        VOLUME_ARGS+=("-v" "$container_path/node_modules")
-        print_verbose "Isolating node_modules with anonymous volume (flavor: ${FLAVOR})"
+        VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_path/node_modules,tmpfs-mode=1777")
+        print_verbose "Isolating node_modules with tmpfs mount (flavor: ${FLAVOR})"
     fi
 
     # Try to pull image if using registry
@@ -2169,13 +2170,14 @@ run_docker_container() {
         print_verbose "Using direct mount (exclusions not available)"
     fi
 
-    # Isolate node_modules from host (container gets its own writable copy)
+    # Isolate node_modules from host with tmpfs (writable by any user, container-only)
     # Prevents cross-platform native binary conflicts (linux/amd64 vs host arch)
+    # tmpfs mode 1777 ensures node user (uid 1000) can write without ownership issues
     # Must appear AFTER create_volume_args/get_workspace_volume_args so the
-    # anonymous volume shadows the host mount (later -v wins in Docker)
+    # tmpfs shadows the host mount (later mount wins in Docker)
     if [[ "${FLAVOR:-}" == "node" ]]; then
-        VOLUME_ARGS+=("-v" "$container_path/node_modules")
-        print_verbose "Isolating node_modules with anonymous volume (flavor: ${FLAVOR})"
+        VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_path/node_modules,tmpfs-mode=1777")
+        print_verbose "Isolating node_modules with tmpfs mount (flavor: ${FLAVOR})"
     fi
 
     print_verbose "Starting Docker container"
