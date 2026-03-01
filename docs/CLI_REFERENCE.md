@@ -227,7 +227,7 @@ nyia-claude --work-branch feature/x --create --base-branch develop
 nyia-claude --rag --rag-model nomic-embed-text --verbose
 
 # Flavor with prompt
-nyia-claude --flavor python -p "Write tests"
+nyia-claude --flavor python
 ```
 
 ---
@@ -255,7 +255,7 @@ nyia-claude --work-branch feature/auth
 
 ```bash
 # Use Python flavor
-nyia-claude --flavor python -p "Write pytest tests"
+nyia-claude --flavor python
 
 # Interactive mode with flavor
 nyia-claude --flavor python
@@ -278,7 +278,7 @@ nyia-claude --image nyiakeeper/claude-custom
 
 ```bash
 # Enable RAG for semantic search
-nyia-claude --rag -p "Find authentication code"
+nyia-claude --rag
 
 # Debug RAG indexing
 nyia-claude --rag --rag-verbose

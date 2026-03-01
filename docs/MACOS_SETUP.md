@@ -137,7 +137,7 @@ ollama pull nomic-embed-text
 echo "NYIA_RAG_MODEL=nomic-embed-text" >> ~/.config/nyiakeeper/claude.conf
 
 # Use RAG
-nyia-claude --rag -p "Search for authentication code"
+nyia-claude --rag
 ```
 
 ## Quick Test
@@ -147,7 +147,7 @@ nyia-claude --rag -p "Search for authentication code"
 cd ~/your-project
 
 # Run Claude with a prompt
-nyia-claude -p "Explain the structure of this project"
+nyia-claude
 
 # Or start interactive shell
 nyia-claude --shell
@@ -189,19 +189,19 @@ chmod +x ~/.local/lib/nyiakeeper/bin/nyia*
 nyia list
 
 # Use specific assistant
-nyia-claude -p "your prompt"
-nyia-gemini -p "your prompt"
-nyia-vibe -p "your prompt"
+nyia-claude
+nyia-gemini
+nyia-vibe
 
 # Check status
 nyia-claude --status
 
 # Use language flavor
-nyia-claude --flavor python -p "Write pytest tests"
-nyia-claude --flavor node -p "Create a React component"
+nyia-claude --flavor python
+nyia-claude --flavor node
 
 # Debug mode
-nyia-claude --verbose -p "your prompt"
+nyia-claude --verbose
 
 # Interactive shell
 nyia-claude --shell

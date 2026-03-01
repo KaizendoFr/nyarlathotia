@@ -159,7 +159,7 @@ get_assistant_arg_desc() {
         "--shell") echo "Start interactive bash shell in container" ;;
         "--set-api-key") echo "Helper to set OpenAI API key for team plan users" ;;
         "--disable-exclusions") echo "Disable mount exclusions for this session" ;;
-        "--prompt,-p") echo "Explicit user prompt (required for non-interactive mode)" ;;
+        "--prompt,-p") echo "Explicit user prompt (deprecated flag, use interactive mode)" ;;
         "--agent") echo "Select agent persona for this session (e.g., reviewer, planner)" ;;
         "--list-agents") echo "List available agent personas for this assistant" ;;
         "--command-mode") echo "Set command approval mode for this session (safe or full)" ;;
@@ -171,7 +171,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --prompt,-p --agent --list-agents --rag --rag-verbose"
+    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --agent --list-agents --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -211,9 +211,9 @@ EOF
     cat << EOF
 
 Assistant Access (use direct commands):
-  nyia-claude -p "Review this code"           # Direct Claude access
-  nyia-gemini -p "Explain algorithm"          # Direct Gemini access  
-  nyia-opencode -p "Analyze code"             # Direct OpenCode access
+  nyia-claude                                    # Start Claude session
+  nyia-gemini                                   # Start Gemini session
+  nyia-opencode                                 # Start OpenCode session
 
 Global Options:
 EOF
@@ -230,7 +230,7 @@ Examples:
   $script_name status                           # Show system status
   $script_name clean                            # Clean old images
   
-  nyia-claude -p "Analyze this function"       # Use Claude assistant
+  nyia-claude                                    # Start Claude session
   nyia-gemini --build --dev                    # Build Gemini dev image
 
 For assistant-specific help: nyia-<assistant> --help
@@ -261,7 +261,7 @@ Prompt Customization:
 
     # Edit and test
     nano ~/.config/nyiakeeper/prompts/${assistant_name}-overrides.md
-    nyia-${assistant_name} -p "test prompt" --verbose
+    nyia-${assistant_name} --verbose
 
   Customization levels:
     Global: ~/.config/nyiakeeper/prompts/base-overrides.md
@@ -293,12 +293,11 @@ Nyia Keeper ${assistant_name} Assistant - "I whisper in code. You commit in fear
 
 Usage:
   nyia-${assistant_name}                      # Interactive session
-  nyia-${assistant_name} -p "prompt text"     # Direct prompt
   nyia-${assistant_name} [options]            # Various operations
 
 Quick Start:
   nyia-${assistant_name} --status             # Show configuration & overlays
-  nyia-${assistant_name} -p "your prompt"     # Use assistant
+  nyia-${assistant_name}                      # Start interactive session
   nyia-${assistant_name} --build-custom-image  # Build with your overlays
 EOF
 
@@ -342,7 +341,6 @@ EOF
     2. Project: ./.nyiakeeper/${assistant_name}/overlay/Dockerfile
 
 Operations:
-  -p, --prompt "text"      # Send prompt to assistant
   --shell                  # Interactive bash in container
   --login                  # Authenticate assistant
   --status                 # Show current config & overlays
@@ -399,7 +397,7 @@ Global Options:
 
 Examples:
   # Basic usage:
-  nyia-${assistant_name} -p "Create a Python script with tests"
+  nyia-${assistant_name}                        # Start interactive session
   nyia-${assistant_name} --status              # Check configuration
 EOF
 
@@ -620,7 +618,6 @@ parse_assistant_args() {
                 else
                     echo "Error: --prompt requires an argument" >&2
                     echo "Usage: --prompt \"Your prompt text\"" >&2
-                    echo "   or: -p \"Your prompt text\"" >&2
                     exit 1
                 fi
                 ;;
@@ -677,7 +674,6 @@ parse_assistant_args() {
                     echo "  --shell              Interactive shell in container" >&2
                     echo "  --check-requirements Check system requirements" >&2
                     echo "  --path <dir>         Work on different project directory" >&2
-                    echo "  --prompt, -p <text>  Explicit user prompt" >&2
                     echo "  --verbose, -v        Enable verbose output" >&2
                     echo "  --command-mode <m>   Set command mode: safe (default) or full" >&2
                     echo "  --help, -h           Show help" >&2
@@ -713,19 +709,17 @@ parse_assistant_args() {
                     echo "  nyia --path /path $1       # With custom path" >&2
                     echo "" >&2
                     echo "For assistant usage:" >&2
-                    echo "  nyia-claude -p 'your prompt'     # Example with prompt" >&2
+                    echo "  nyia-claude                       # Interactive mode" >&2
                     echo "  nyia-gemini                       # Interactive mode" >&2
                     echo "  nyia-opencode --help              # Show assistant help" >&2
                     exit 1
                 fi
                 
-                # Reject direct text arguments - require -p/--prompt flag
-                echo "Error: Direct text prompts not supported. Use --prompt or -p flag" >&2
+                # Reject direct text arguments - use interactive mode
+                echo "Error: Direct text prompts not supported" >&2
                 echo "" >&2
                 echo "Bad:  nyia-claude 'help me'" >&2
-                echo "Good: nyia-claude -p 'help me'" >&2
-                echo "      nyia-claude --prompt 'help me'" >&2
-                echo "      nyia-claude              # Interactive mode" >&2
+                echo "Good: nyia-claude              # Interactive mode" >&2
                 echo "" >&2
                 exit 1
                 ;;
@@ -872,12 +866,10 @@ validate_args() {
         done
         
         if [[ "$has_non_option_args" == "true" ]]; then
-            echo "Error: Direct text prompts not supported. Use --prompt or -p flag" >&2
+            echo "Error: Direct text prompts not supported" >&2
             echo "" >&2
             echo "Bad:  nyia-claude 'help me'" >&2
-            echo "Good: nyia-claude -p 'help me'" >&2
-            echo "      nyia-claude --prompt 'help me'" >&2
-            echo "      nyia-claude              # Interactive mode" >&2
+            echo "Good: nyia-claude              # Interactive mode" >&2
             echo "" >&2
             exit 1
         fi

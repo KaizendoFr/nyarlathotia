@@ -728,6 +728,46 @@ get_flavor_image_name() {
     fi
 }
 
+# Sanitize a project directory path into a Docker-safe slug
+# Uses basename only (not full path) for readability.
+# Two projects with the same basename will share a slug — this is a known limitation.
+# @param path - directory path (required)
+# @return Docker-safe slug: lowercase, alphanumeric + hyphens, max 30 chars
+sanitize_project_slug() {
+    local path="$1"
+
+    if [[ -z "$path" ]]; then
+        return 1
+    fi
+
+    local slug
+    slug=$(basename "$path")
+
+    # Lowercase
+    slug=$(echo "$slug" | tr '[:upper:]' '[:lower:]')
+
+    # Replace non-alphanumeric with hyphens
+    slug=$(echo "$slug" | sed 's/[^a-z0-9-]/-/g')
+
+    # Collapse multiple hyphens
+    slug=$(echo "$slug" | sed 's/--*/-/g')
+
+    # Strip leading/trailing hyphens
+    slug=$(echo "$slug" | sed 's/^-//; s/-$//')
+
+    # Truncate to 30 chars
+    slug="${slug:0:30}"
+
+    # Strip trailing hyphen after truncation
+    slug=$(echo "$slug" | sed 's/-$//')
+
+    if [[ -z "$slug" ]]; then
+        return 1
+    fi
+
+    echo "$slug"
+}
+
 # Development mode detection - only exists in development source
 # Runtime distributions don't need this since features are preprocessed out
 

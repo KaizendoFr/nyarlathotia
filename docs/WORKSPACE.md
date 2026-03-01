@@ -17,7 +17,7 @@ EOF
 
 2. Run any assistant - workspace mode is auto-detected:
 ```bash
-nyia-claude -p "Help me integrate the shared-library into this project"
+nyia-claude
 ```
 
 ## Configuration File Format

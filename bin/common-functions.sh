@@ -49,6 +49,10 @@ if [[ -f "$HOME/.local/lib/nyiakeeper/input-validation.sh" ]]; then
     source "$HOME/.local/lib/nyiakeeper/input-validation.sh"
 fi
 
+# Load auto-update library (runtime only — best-effort, never blocks)
+_auto_update_lib="${BASH_SOURCE[0]%/*}/../lib/nyiakeeper/auto-update.sh"
+[[ -f "$_auto_update_lib" ]] && source "$_auto_update_lib" 2>/dev/null || true
+
 # Platform-aware Docker user mapping
 get_docker_user_args() {
     if uses_docker_desktop; then
@@ -369,7 +373,7 @@ Nyia Keeper uses a layered prompt system. Your custom prompts are merged with th
 
 3. **Test your changes:**
    ```bash
-   nyia-claude -p "Hello" --verbose
+   nyia-claude --verbose
    ```
    Look for "User Base Customizations" in the generated prompt.
 
@@ -595,7 +599,7 @@ To activate these customizations, copy this file and remove the \`.example\` ext
 
 1. Copy this file: \`cp $(basename "$file_path") ${file_path%.example}\`
 2. Edit the new file with your preferences
-3. Test with: \`nyia-${assistant_context%% *} -p "test prompt" --verbose\`
+3. Test with: \`nyia-${assistant_context%% *} --verbose\`
 
 ## Notes
 
@@ -1442,22 +1446,29 @@ build_custom_image() {
         return 1
     fi
     
+    # Resolve project path for overlay detection and slug derivation
+    if [[ -z "${PROJECT_PATH:-}" ]]; then
+        print_error "PROJECT_PATH is not set. Cannot determine project scope for overlay image naming."
+        return 1
+    fi
+
     # Check for overlays
     local user_overlay="$HOME/.config/nyiakeeper/${assistant_name}/overlay/Dockerfile"
-    local project_overlay="$(pwd)/.nyiakeeper/${assistant_name}/overlay/Dockerfile"
-    local has_overlay=false
-    
+    local project_overlay="${PROJECT_PATH}/.nyiakeeper/${assistant_name}/overlay/Dockerfile"
+    local has_user_overlay=false
+    local has_project_overlay=false
+
     if [[ -f "$user_overlay" ]]; then
         print_info "Found user overlay: $user_overlay"
-        has_overlay=true
+        has_user_overlay=true
     fi
-    
+
     if [[ -f "$project_overlay" ]]; then
         print_info "Found project overlay: $project_overlay"
-        has_overlay=true
+        has_project_overlay=true
     fi
-    
-    if [[ "$has_overlay" == "false" ]]; then
+
+    if [[ "$has_user_overlay" == "false" && "$has_project_overlay" == "false" ]]; then
         print_error "No overlay Dockerfile found for custom image"
         print_info ""
         print_info "Create an overlay at one of these locations:"
@@ -1474,15 +1485,26 @@ build_custom_image() {
         print_info "  nyia-${assistant_name} --build-custom-image --flavor python # Python flavor as base"
         return 1
     fi
-    
-    # Build custom image (include flavor in name if used)
+
+    # Build custom image name — include project slug when project overlay exists
     local custom_image_name
     if [[ -n "${FLAVOR:-}" ]]; then
         custom_image_name="nyiakeeper/${assistant_name}-${FLAVOR}-custom"
     else
         custom_image_name="nyiakeeper/${assistant_name}-custom"
     fi
-    local build_context="$(pwd)"
+
+    # Append project slug when project overlay is present (prevents cross-project overwrites)
+    if [[ "$has_project_overlay" == "true" ]]; then
+        local project_slug
+        project_slug=$(sanitize_project_slug "$PROJECT_PATH") || {
+            print_error "Failed to derive project slug from PROJECT_PATH: $PROJECT_PATH"
+            return 1
+        }
+        custom_image_name="${custom_image_name}-${project_slug}"
+    fi
+
+    local build_context="${PROJECT_PATH}"
     
     print_info "Building custom image: $custom_image_name"
     print_info "Base image: $base_image"
@@ -1522,7 +1544,7 @@ build_custom_image() {
         print_success "Custom image built successfully: $custom_image_name"
         print_info ""
         print_info "To use your custom image:"
-        print_info "  nyia-${assistant_name} --image $custom_image_name -p \"your prompt\""
+        print_info "  nyia-${assistant_name} --image $custom_image_name"
     else
         print_error "Failed to build custom image"
         rm -f "$temp_dockerfile"
@@ -2745,8 +2767,8 @@ list_assistant_flavors() {
 
     echo ""
     echo "Usage:"
-    echo "  nyia-${assistant_name} --flavor python -p \"Write pytest tests\""
-    echo "  nyia-${assistant_name} --flavor node -p \"Create Storybook stories\""
+    echo "  nyia-${assistant_name} --flavor python"
+    echo "  nyia-${assistant_name} --flavor node"
     echo ""
     echo "Note: Flavors are pulled from registry on first use."
 }

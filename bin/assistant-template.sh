@@ -84,7 +84,10 @@ main() {
     parse_args "assistant" "$@"
     validate_args
     debug_args
-    
+
+    # Startup update check (runtime only — never blocks assistant launch)
+    type check_for_updates_if_due &>/dev/null && check_for_updates_if_due || true
+
     # Set project path if not provided
     if [[ -z "$PROJECT_PATH" ]]; then
         PROJECT_PATH=$(pwd)

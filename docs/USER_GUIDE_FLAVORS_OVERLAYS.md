@@ -43,10 +43,10 @@ nyia-claude --list-flavors
 
 ```bash
 # Python development
-nyia-claude --flavor python -p "Write pytest tests for this module"
+nyia-claude --flavor python
 
 # PHP development
-nyia-claude --flavor php -p "Create PHPUnit tests for UserController"
+nyia-claude --flavor php
 
 # Interactive mode with flavor
 nyia-claude --flavor python
@@ -102,17 +102,19 @@ nyia-claude --build-custom-image
 nyia-claude --build-custom-image --no-cache
 ```
 
-This creates an image named `nyiakeeper/claude-custom`.
+This creates a project-scoped image named `nyiakeeper/claude-custom-{project}` (e.g., `nyiakeeper/claude-custom-my-app`).
+If only a user overlay exists (no project overlay), the global name `nyiakeeper/claude-custom` is used instead.
 
 ### Step 3: Use Your Custom Image
 
 ```bash
-nyia-claude --image nyiakeeper/claude-custom -p "your prompt"
+# The build output shows the exact image name to use
+nyia-claude --image nyiakeeper/claude-custom-my-app
 ```
 
 **Note:** You must use `--image` to select your custom image. Without it, the default image is used.
 
-> **Migration:** If you previously built custom images with the old `nyiakeeper-{assistant}-custom` naming, they still work via `--image` but won't appear in `--list-images`. Rebuild with `--build-custom-image` to get the new naming.
+> **Migration:** Users who built legacy custom images (`nyiakeeper/claude-custom`) before project scoping can still reference them via the `--image` flag.
 
 ---
 
@@ -209,6 +211,6 @@ Error: No such image: nyiakeeper/claude-custom
 | Use PHP flavor | `nyia-claude --flavor php` |
 | Build custom overlay | `nyia-claude --build-custom-image` |
 | Rebuild without cache | `nyia-claude --build-custom-image --no-cache` |
-| Use custom image | `nyia-claude --image nyiakeeper/claude-custom` |
+| Use custom image | `nyia-claude --image nyiakeeper/claude-custom-my-app` |
 | Check available images | `nyia-claude --list-images` |
 
