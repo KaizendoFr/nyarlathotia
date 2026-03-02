@@ -557,6 +557,12 @@ create_volume_args() {
             IFS=',' read -ra excluded_dir_array <<< "$excluded_dirs_str"
             for rel_path in "${excluded_dir_array[@]}"; do
                 if [[ -n "$rel_path" ]]; then
+                    # Skip if another excluded dir is an ancestor
+                    # (prevents nested ro mount conflicts — Docker can't create mountpoints inside ro mounts)
+                    if is_path_under_excluded_dir "$rel_path" "${excluded_dir_array[@]}"; then
+                        print_verbose "Skipping directory (parent already excluded, cached): $rel_path"
+                        continue
+                    fi
                     # Skip if user has overridden this directory
                     if [[ ${#cache_dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${cache_dir_overrides[@]}"; then
                         print_verbose "Override: keeping directory visible (cached): $rel_path"
@@ -614,6 +620,13 @@ create_volume_args() {
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
 
+                # Skip if already under an excluded parent directory
+                # (prevents nested ro mount conflicts — Docker can't create mountpoints inside ro mounts)
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping directory (parent already excluded): $rel_path"
+                    continue
+                fi
+
                 # Skip if this is a Nyia Keeper system directory
                 if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
                     print_verbose "Skipping Nyia Keeper system directory: $rel_path"
@@ -652,6 +665,12 @@ create_volume_args() {
             while IFS=' ' read -r pattern; do
                 while IFS= read -r -d '' match; do
                     local rel_path="${match#$project_path/}"
+                    # Skip if already under an excluded parent directory
+                    # (prevents nested ro mount conflicts — Docker can't create mountpoints inside ro mounts)
+                    if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                        print_verbose "Skipping directory (parent already excluded): $rel_path"
+                        continue
+                    fi
                     if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
                         print_verbose "Skipping Nyia Keeper system directory: $rel_path"
                         continue
@@ -675,6 +694,11 @@ create_volume_args() {
             while IFS=' ' read -r pattern; do
                 while IFS= read -r -d '' match; do
                     local rel_path="${match#$project_path/}"
+                    # Skip if already under an excluded parent directory
+                    if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                        print_verbose "Skipping directory (parent already excluded): $rel_path"
+                        continue
+                    fi
                     if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
                         continue
                     fi
