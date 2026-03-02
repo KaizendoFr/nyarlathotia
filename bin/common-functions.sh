@@ -2448,6 +2448,7 @@ login_assistant() {
                 print_info "Prerequisite: enable 'Device code login' in your ChatGPT security settings"
                 print_info "  Personal: ChatGPT Settings > Security"
                 print_info "  Workspace: Ask your admin to enable in workspace permissions"
+                print_info "  Docs: https://developers.openai.com/codex/auth/"
             fi
             ;;
 

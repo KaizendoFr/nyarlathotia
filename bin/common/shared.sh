@@ -526,10 +526,11 @@ debug_log() {
 
 # Performance helpers
 time_command() {
-    local start_time=$(date +%s.%N)
+    # date +%s.%N is GNU-only (%N not supported on macOS BSD date)
+    local start_time=$(date +%s)
     "$@"
-    local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc 2>/dev/null || echo "N/A")
+    local end_time=$(date +%s)
+    local duration=$(( end_time - start_time ))
     debug_log "Command took ${duration}s: $*"
 }
 
