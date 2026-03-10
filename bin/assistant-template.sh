@@ -93,92 +93,9 @@ main() {
         PROJECT_PATH=$(pwd)
     fi
 
-    # Workspace mode detection (multi-repository support)
-    WORKSPACE_MODE=false
-    WORKSPACE_REPOS=()
-    WORKSPACE_REPO_MODES=()
-    if declare -f is_workspace >/dev/null 2>&1 && is_workspace "$PROJECT_PATH"; then
-        WORKSPACE_MODE=true
-        mapfile -t WORKSPACE_REPOS < <(parse_workspace_repos "$PROJECT_PATH")
-        mapfile -t WORKSPACE_REPO_MODES < <(parse_workspace_modes "$PROJECT_PATH")
+    # === INFO-ONLY EXITS (Plan 187: no project-level side effects) ===
+    # These must exit before auto-init to avoid creating .nyiakeeper/ in CWD
 
-        if ! verify_workspace_repos "$PROJECT_PATH" WORKSPACE_REPOS WORKSPACE_REPO_MODES; then
-            print_error "Workspace verification failed"
-            exit 1
-        fi
-
-        # Count RO/RW for status display
-        local rw_count=0 ro_count=0
-        for m in "${WORKSPACE_REPO_MODES[@]}"; do
-            [[ "$m" == "rw" ]] && ((rw_count++)) || ((ro_count++))
-        done
-        print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
-    fi
-    export WORKSPACE_MODE WORKSPACE_REPOS WORKSPACE_REPO_MODES
-
-    # Auto-initialize project prompts directory (Git-style behavior)
-    ensure_project_prompts_directory "$PROJECT_PATH"
-
-    # Auto-initialize exclusions system on first run (Git-style behavior)
-    # Only if exclusions are enabled and config doesn't exist
-    if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
-        if [[ ! -f "$PROJECT_PATH/.nyiakeeper/exclusions.conf" ]]; then
-            # Load exclusions library to get init function
-            local exclusions_lib="$script_dir/../lib/exclusions-commands.sh"
-            if [[ -f "$exclusions_lib" ]]; then
-                source "$exclusions_lib"
-                
-                # Call full exclusions initialization (silent mode)
-                local old_verbose="$VERBOSE"
-                export VERBOSE="false"
-                exclusions_init "$PROJECT_PATH" >/dev/null 2>&1
-                export VERBOSE="$old_verbose"
-                
-                if [[ "$VERBOSE" == "true" ]]; then
-                    print_info "Auto-initialized exclusions system: .nyiakeeper/exclusions.conf"
-                fi
-            else
-                print_error "Failed to load exclusions library: $exclusions_lib"
-                exit 1
-            fi
-        fi
-    fi
-    
-    # SECURITY CHECKPOINT: Verify exclusions system is loaded when enabled
-    if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
-        # Load mount exclusions library if not already loaded
-        local mount_exclusions_lib="$script_dir/../lib/mount-exclusions.sh"
-        if ! declare -f create_volume_args >/dev/null 2>&1; then
-            if [[ -f "$mount_exclusions_lib" ]]; then
-                source "$mount_exclusions_lib"
-            fi
-        fi
-        
-        # Final verification - exclusions must work when enabled
-        if ! declare -f create_volume_args >/dev/null 2>&1; then
-            print_error "SECURITY ERROR: Mount exclusions enabled but system failed to load"
-            print_error "This would expose sensitive files (.env, credentials) to AI assistants"
-            print_error ""
-            print_error "To fix:"
-            print_error "  1. Restart and try again"
-            print_error "  2. Use --disable-exclusions flag (NOT RECOMMENDED for security)"
-            exit 1
-        fi
-        print_verbose "✅ Mount exclusions verified and active"
-    fi
-    
-    # Show warning when exclusions explicitly disabled
-    if [[ "$DISABLE_EXCLUSIONS" == "true" ]]; then
-        print_warning() { echo -e "\e[33m⚠️  $1\e[0m" >&2; }
-        print_warning "SECURITY RISK: Mount exclusions disabled"
-        print_warning "Sensitive files (.env, credentials, keys) are exposed to AI"
-        print_warning "Only use this in trusted environments"
-        echo ""
-    fi
-    
-    # Use explicit prompt from -p/--prompt flag or interactive mode
-    local prompt="$USER_PROMPT"
-    
     # Handle help
     if [[ "$SHOW_HELP" == "true" ]]; then
         show_help "$(basename "$0")" "$config_assistant_name" ""
@@ -247,6 +164,94 @@ main() {
         fi
         exit 0
     fi
+
+    # === END INFO-ONLY EXITS ===
+
+    # Workspace mode detection (multi-repository support)
+    WORKSPACE_MODE=false
+    WORKSPACE_REPOS=()
+    WORKSPACE_REPO_MODES=()
+    if declare -f is_workspace >/dev/null 2>&1 && is_workspace "$PROJECT_PATH"; then
+        WORKSPACE_MODE=true
+        mapfile -t WORKSPACE_REPOS < <(parse_workspace_repos "$PROJECT_PATH")
+        mapfile -t WORKSPACE_REPO_MODES < <(parse_workspace_modes "$PROJECT_PATH")
+
+        if ! verify_workspace_repos "$PROJECT_PATH" WORKSPACE_REPOS WORKSPACE_REPO_MODES; then
+            print_error "Workspace verification failed"
+            exit 1
+        fi
+
+        # Count RO/RW for status display
+        local rw_count=0 ro_count=0
+        for m in "${WORKSPACE_REPO_MODES[@]}"; do
+            [[ "$m" == "rw" ]] && ((rw_count++)) || ((ro_count++))
+        done
+        print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
+    fi
+    export WORKSPACE_MODE WORKSPACE_REPOS WORKSPACE_REPO_MODES
+
+    # Auto-initialize project prompts directory (Git-style behavior)
+    ensure_project_prompts_directory "$PROJECT_PATH"
+
+    # Auto-initialize exclusions system on first run (Git-style behavior)
+    # Only if exclusions are enabled and config doesn't exist
+    if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
+        if [[ ! -f "$PROJECT_PATH/.nyiakeeper/exclusions.conf" ]]; then
+            # Load exclusions library to get init function
+            local exclusions_lib="$script_dir/../lib/exclusions-commands.sh"
+            if [[ -f "$exclusions_lib" ]]; then
+                source "$exclusions_lib"
+
+                # Call full exclusions initialization (silent mode)
+                local old_verbose="$VERBOSE"
+                export VERBOSE="false"
+                exclusions_init "$PROJECT_PATH" >/dev/null 2>&1
+                export VERBOSE="$old_verbose"
+
+                if [[ "$VERBOSE" == "true" ]]; then
+                    print_info "Auto-initialized exclusions system: .nyiakeeper/exclusions.conf"
+                fi
+            else
+                print_error "Failed to load exclusions library: $exclusions_lib"
+                exit 1
+            fi
+        fi
+    fi
+
+    # SECURITY CHECKPOINT: Verify exclusions system is loaded when enabled
+    if [[ "$ENABLE_MOUNT_EXCLUSIONS" == "true" ]] || [[ -z "$ENABLE_MOUNT_EXCLUSIONS" ]]; then
+        # Load mount exclusions library if not already loaded
+        local mount_exclusions_lib="$script_dir/../lib/mount-exclusions.sh"
+        if ! declare -f create_volume_args >/dev/null 2>&1; then
+            if [[ -f "$mount_exclusions_lib" ]]; then
+                source "$mount_exclusions_lib"
+            fi
+        fi
+
+        # Final verification - exclusions must work when enabled
+        if ! declare -f create_volume_args >/dev/null 2>&1; then
+            print_error "SECURITY ERROR: Mount exclusions enabled but system failed to load"
+            print_error "This would expose sensitive files (.env, credentials) to AI assistants"
+            print_error ""
+            print_error "To fix:"
+            print_error "  1. Restart and try again"
+            print_error "  2. Use --disable-exclusions flag (NOT RECOMMENDED for security)"
+            exit 1
+        fi
+        print_verbose "✅ Mount exclusions verified and active"
+    fi
+
+    # Show warning when exclusions explicitly disabled
+    if [[ "$DISABLE_EXCLUSIONS" == "true" ]]; then
+        print_warning() { echo -e "\e[33m⚠️  $1\e[0m" >&2; }
+        print_warning "SECURITY RISK: Mount exclusions disabled"
+        print_warning "Sensitive files (.env, credentials, keys) are exposed to AI"
+        print_warning "Only use this in trusted environments"
+        echo ""
+    fi
+
+    # Use explicit prompt from -p/--prompt flag or interactive mode
+    local prompt="$USER_PROMPT"
 
     
     # Handle custom image build (end-user power feature)
