@@ -615,8 +615,17 @@ create_volume_args() {
         local -a scanned_excluded_dirs=()
         local dir_patterns=$(get_exclusion_dirs "$project_path")
         print_verbose "Directory exclusion patterns: $dir_patterns"
+
+        # Build combined find expression for all directory patterns (single find call)
+        local case_flag=$(get_find_case_args "$project_path")
+        local -a dir_find_expr=()
         while IFS=' ' read -r pattern; do
-            # Use find to search recursively
+            [[ -z "$pattern" ]] && continue
+            [[ ${#dir_find_expr[@]} -gt 0 ]] && dir_find_expr+=("-o")
+            dir_find_expr+=("$case_flag" "$pattern")
+        done < <(echo "$dir_patterns" | tr ' ' '\n')
+
+        if [[ ${#dir_find_expr[@]} -gt 0 ]]; then
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
 
@@ -642,7 +651,10 @@ create_volume_args() {
                 scanned_excluded_dirs+=("$rel_path")
                 # Package-manager cache dirs get writable tmpfs (container can use them)
                 # Security-sensitive dirs get read-only placeholder
-                if is_package_manager_cache_pattern "$pattern"; then
+                # Check matched dir basename since we no longer track per-pattern
+                local dir_basename
+                dir_basename=$(basename "$rel_path")
+                if is_package_manager_cache_pattern "$dir_basename"; then
                     VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_path/$rel_path,tmpfs-mode=1777")
                     print_verbose "Excluding directory (writable tmpfs): $rel_path"
                 else
@@ -653,8 +665,8 @@ create_volume_args() {
                 \( -name node_modules -o -name vendor -o -name site-packages \
                    -o -name __pycache__ -o -name .venv -o -name venv \
                    -o -name target \) -prune \
-                -o -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
-        done < <(echo "$dir_patterns" | tr ' ' '\n')
+                -o -type d \( "${dir_find_expr[@]}" \) -print0 2>/dev/null)
+        fi
 
         # Shallow scan: bare-word patterns at depth 2 only (project root + 1 level)
         # These match common security dir names but also match legitimate packages,
@@ -662,7 +674,15 @@ create_volume_args() {
         local shallow_patterns=$(get_shallow_exclusion_dirs)
         if [[ -n "$shallow_patterns" ]]; then
             print_verbose "Shallow exclusion patterns (depth 2): $shallow_patterns"
+            # Build combined find expression for all shallow patterns (single find call)
+            local -a shallow_find_expr=()
             while IFS=' ' read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+                [[ ${#shallow_find_expr[@]} -gt 0 ]] && shallow_find_expr+=("-o")
+                shallow_find_expr+=("$case_flag" "$pattern")
+            done < <(echo "$shallow_patterns" | tr ' ' '\n')
+
+            if [[ ${#shallow_find_expr[@]} -gt 0 ]]; then
                 while IFS= read -r -d '' match; do
                     local rel_path="${match#$project_path/}"
                     # Skip if already under an excluded parent directory
@@ -682,8 +702,8 @@ create_volume_args() {
                     scanned_excluded_dirs+=("$rel_path")
                     VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
                     print_verbose "Excluding directory (shallow): $rel_path"
-                done < <(find "$project_path" -maxdepth 2 -type d $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
-            done < <(echo "$shallow_patterns" | tr ' ' '\n')
+                done < <(find "$project_path" -maxdepth 2 -type d \( "${shallow_find_expr[@]}" \) -print0 2>/dev/null)
+            fi
         fi
 
         # Path-based scan: slash-containing patterns that need find -path
@@ -691,7 +711,15 @@ create_volume_args() {
         local path_patterns=$(get_exclusion_path_patterns)
         if [[ -n "$path_patterns" ]]; then
             print_verbose "Path-based exclusion patterns: $path_patterns"
+            # Build combined find expression for path-based patterns (single find call)
+            local -a path_find_expr=()
             while IFS=' ' read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+                [[ ${#path_find_expr[@]} -gt 0 ]] && path_find_expr+=("-o")
+                path_find_expr+=("-path" "*/$pattern")
+            done < <(echo "$path_patterns" | tr ' ' '\n')
+
+            if [[ ${#path_find_expr[@]} -gt 0 ]]; then
                 while IFS= read -r -d '' match; do
                     local rel_path="${match#$project_path/}"
                     # Skip if already under an excluded parent directory
@@ -709,15 +737,23 @@ create_volume_args() {
                     scanned_excluded_dirs+=("$rel_path")
                     VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
                     print_verbose "Excluding directory (path): $rel_path"
-                done < <(find "$project_path" -maxdepth "$max_depth" -type d -path "*/$pattern" -print0 2>/dev/null)
-            done < <(echo "$path_patterns" | tr ' ' '\n')
+                done < <(find "$project_path" -maxdepth "$max_depth" -type d \( "${path_find_expr[@]}" \) -print0 2>/dev/null)
+            fi
         fi
 
         # Second: scan files, skip if under excluded directory
         local patterns=$(get_exclusion_patterns "$project_path")
         print_verbose "Exclusion patterns: $patterns"
+
+        # Build combined find expression for all file patterns (single find call)
+        local -a file_find_expr=()
         while IFS=' ' read -r pattern; do
-            # Use find to search recursively
+            [[ -z "$pattern" ]] && continue
+            [[ ${#file_find_expr[@]} -gt 0 ]] && file_find_expr+=("-o")
+            file_find_expr+=("$case_flag" "$pattern")
+        done < <(echo "$patterns" | tr ' ' '\n')
+
+        if [[ ${#file_find_expr[@]} -gt 0 ]]; then
             while IFS= read -r -d '' match; do
                 local rel_path="${match#$project_path/}"
 
@@ -745,8 +781,8 @@ create_volume_args() {
                 \( -name node_modules -o -name vendor -o -name site-packages \
                    -o -name __pycache__ -o -name .venv -o -name venv \
                    -o -name target \) -prune \
-                -o -type f $(get_find_case_args "$project_path") "$pattern" -print0 2>/dev/null)
-        done < <(echo "$patterns" | tr ' ' '\n')
+                -o -type f \( "${file_find_expr[@]}" \) -print0 2>/dev/null)
+        fi
         
         # KISS: Write cache for next time (simple approach)
         if declare -f write_exclusions_cache >/dev/null 2>&1; then
@@ -800,10 +836,12 @@ create_filtered_volume_args() {
 
 # Appends volume mounts for a repo WITHOUT clearing VOLUME_ARGS
 # Unlike create_volume_args(), this ADDS to existing array
-# Usage: append_repo_volume_args "$repo_path" "$container_base_path"
+# Usage: append_repo_volume_args "$repo_path" "$container_base_path" ["$mode"]
+#   mode: "ro" or "rw" (default: "rw")
 append_repo_volume_args() {
     local repo_path="$1"
     local container_base="$2"  # e.g., /project/ws-{hash}/repos
+    local mount_mode="${3:-rw}"  # Access mode: ro or rw
 
     # Use hash suffix for collision prevention (Issue #10 - same basename repos)
     local repo_hash
@@ -815,7 +853,7 @@ append_repo_volume_args() {
     print_verbose "Appending repo mount: $repo_path -> $container_subpath"
 
     # Add base mount for this repo (does NOT clear VOLUME_ARGS)
-    VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:rw")
+    VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:${mount_mode}")
 
     # Apply exclusions from this repo's .nyiakeeper/exclusions.conf if it exists
     if [[ -f "$repo_path/.nyiakeeper/exclusions.conf" ]]; then

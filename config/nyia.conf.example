@@ -24,3 +24,19 @@ NYIA_COMMAND_MODE="safe"
 # Per-assistant .conf files can override this value.
 # Options: nomic-embed-text (768d, fast), mxbai-embed-large (1024d, accurate)
 NYIA_RAG_MODEL="nomic-embed-text"
+
+# === BRANCH STRATEGY ===
+# Controls default branch behavior when launching an assistant.
+#   false - work on current branch (default). If on a protected branch,
+#           prompts for a new branch name interactively.
+#   true  - auto-create a timestamped branch (e.g., claude-2026-03-08-143000).
+#           This was the original default behavior.
+NYIA_AUTO_BRANCH="false"
+
+# === PROTECTED BRANCHES ===
+# Additional branches to protect from direct work (comma-separated).
+# These EXTEND the hardcoded minimum (main, master) — they cannot remove it.
+# Dynamic detection (git default branch, GitHub API) also adds to this list.
+# Both global and project configs are merged (union), not overridden.
+# Example: NYIA_PROTECTED_BRANCHES="develop,staging,production"
+NYIA_PROTECTED_BRANCHES=""

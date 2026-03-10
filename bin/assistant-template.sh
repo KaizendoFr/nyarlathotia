@@ -96,18 +96,25 @@ main() {
     # Workspace mode detection (multi-repository support)
     WORKSPACE_MODE=false
     WORKSPACE_REPOS=()
+    WORKSPACE_REPO_MODES=()
     if declare -f is_workspace >/dev/null 2>&1 && is_workspace "$PROJECT_PATH"; then
         WORKSPACE_MODE=true
         mapfile -t WORKSPACE_REPOS < <(parse_workspace_repos "$PROJECT_PATH")
+        mapfile -t WORKSPACE_REPO_MODES < <(parse_workspace_modes "$PROJECT_PATH")
 
-        if ! verify_workspace_repos "$PROJECT_PATH" "${WORKSPACE_REPOS[@]}"; then
+        if ! verify_workspace_repos "$PROJECT_PATH" WORKSPACE_REPOS WORKSPACE_REPO_MODES; then
             print_error "Workspace verification failed"
             exit 1
         fi
 
-        print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories"
+        # Count RO/RW for status display
+        local rw_count=0 ro_count=0
+        for m in "${WORKSPACE_REPO_MODES[@]}"; do
+            [[ "$m" == "rw" ]] && ((rw_count++)) || ((ro_count++))
+        done
+        print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
     fi
-    export WORKSPACE_MODE WORKSPACE_REPOS
+    export WORKSPACE_MODE WORKSPACE_REPOS WORKSPACE_REPO_MODES
 
     # Auto-initialize project prompts directory (Git-style behavior)
     ensure_project_prompts_directory "$PROJECT_PATH"
@@ -223,6 +230,24 @@ main() {
         exit 0
     fi
 
+    # Handle list skills mode (info-only, host-side resolution) - Plan 177
+    if [[ "$LIST_SKILLS" == "true" ]]; then
+        local skill_lib="$script_dir/../lib/skill-resolution.sh"
+        if [[ -f "$skill_lib" ]]; then
+            source "$skill_lib"
+            local nyiakeeper_home
+            nyiakeeper_home=$(get_nyiakeeper_home)
+            local team_dir=""
+            if declare -f resolve_team_dir >/dev/null 2>&1; then
+                team_dir=$(resolve_team_dir 2>/dev/null) || true
+            fi
+            list_skills "$ASSISTANT_CLI" "$PROJECT_PATH" "$nyiakeeper_home" "$team_dir"
+        else
+            echo "Skill resolution library not found" >&2
+        fi
+        exit 0
+    fi
+
     
     # Handle custom image build (end-user power feature)
     if [[ "$BUILD_CUSTOM_IMAGE" == "true" ]]; then
@@ -248,13 +273,16 @@ main() {
     fi
 
 
-    # Source credentials if available
-    local creds_file="$PROJECT_PATH/.nyiakeeper/creds/env"
+    # Source credentials if available (private path first, legacy fallback)
+    local creds_file="$PROJECT_PATH/.nyiakeeper/private/creds/env"
+    if [[ ! -f "$creds_file" ]]; then
+        creds_file="$PROJECT_PATH/.nyiakeeper/creds/env"
+    fi
     if [[ -f "$creds_file" ]]; then
         source "$creds_file"
         print_verbose "Loaded credentials from $creds_file"
     else
-        print_verbose "No credentials file found at $creds_file"
+        print_verbose "No credentials file found"
     fi
     
     # Source provider-specific hooks if they exist and call setup hook
@@ -390,12 +418,18 @@ show_assistant_status() {
         ((active_count++)) || true
     fi
 
-    if [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/project-overrides.md" ]]; then
+    if [[ -f "$PROJECT_PATH/.nyiakeeper/shared/prompts/project-overrides.md" ]]; then
+        echo "  ✓ Project shared overrides active"
+        ((active_count++)) || true
+    elif [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/project-overrides.md" ]]; then
         echo "  ✓ Project overrides active"
         ((active_count++)) || true
     fi
 
-    if [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/${config_assistant_name}-project.md" ]]; then
+    if [[ -f "$PROJECT_PATH/.nyiakeeper/shared/prompts/${config_assistant_name}-project.md" ]]; then
+        echo "  ✓ Project shared ${config_assistant_name}-specific overrides active"
+        ((active_count++)) || true
+    elif [[ -f "$PROJECT_PATH/.nyiakeeper/prompts/${config_assistant_name}-project.md" ]]; then
         echo "  ✓ Project ${config_assistant_name}-specific overrides active"
         ((active_count++)) || true
     fi

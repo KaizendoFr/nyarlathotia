@@ -54,6 +54,9 @@ export LIST_FLAVORS="false"
 export NYIA_AGENT=""
 export LIST_AGENTS="false"
 
+# Skill listing (Plan 177)
+export LIST_SKILLS="false"
+
 # Command approval mode (Plan 145)
 export NYIA_COMMAND_MODE_CLI=""
 
@@ -102,7 +105,6 @@ export PROJECT_PATH=""
 export BASE_BRANCH=""
 export WORK_BRANCH=""
 export CREATE_BRANCH="false"
-export CURRENT_BRANCH_MODE="false"
 export BUILD_CUSTOM_IMAGE=""
 
 # RAG control flags (Plan 66 - Opt-in, Plan 88 - Config-based model)
@@ -149,7 +151,6 @@ get_assistant_arg_desc() {
         "--base-branch") echo "Specify Git base branch to work from" ;;
         "--work-branch") echo "Reuse existing work branch for your work" ;;
         "--create") echo "Create work branch if it doesn't exist (use with --work-branch)" ;;
-        "--current-branch") echo "Work on current branch (skip branch creation)" ;;
         "--build-custom-image") echo "Build custom Docker image with your overlays (power users)" ;;
         "--setup") echo "Interactive model/provider setup (OpenCode)" ;;
         "--login") echo "Authenticate using the assistant container" ;;
@@ -162,6 +163,7 @@ get_assistant_arg_desc() {
         "--prompt,-p") echo "Explicit user prompt (deprecated flag, use interactive mode)" ;;
         "--agent") echo "Select agent persona for this session (e.g., reviewer, planner)" ;;
         "--list-agents") echo "List available agent personas for this assistant" ;;
+        "--list-skills") echo "List available skills for this assistant" ;;
         "--command-mode") echo "Set command approval mode for this session (safe or full)" ;;
         "--rag") echo "Enable RAG codebase search (requires Ollama + NYIA_RAG_MODEL in config)" ;;
         "--rag-verbose") echo "Enable verbose debug logging for RAG indexing" ;;
@@ -171,7 +173,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --current-branch,-H --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --agent --list-agents --rag --rag-verbose"
+    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --agent --list-agents --list-skills --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -344,21 +346,27 @@ Operations:
   --shell                  # Interactive bash in container
   --login                  # Authenticate assistant
   --status                 # Show current config & overlays
-  -H, --current-branch     # Work on current branch (skip branch creation)
-  -w, --work-branch <name> # Reuse existing work branch
+Branch Strategy (default: work on current branch):
+  -w, --work-branch <name> # Switch to specific work branch
+  --create                 # Create work branch if it doesn't exist
   --base-branch <name>     # Specify Git base branch
+  Protected branches (main, master + config) trigger an interactive prompt.
+  Set NYIA_AUTO_BRANCH=true in config for old timestamped branch behavior.
 
 Agent Personas:
   --agent <name>           # Select agent persona for this session
   --list-agents            # List available agent personas
 
+Skills:
+  --list-skills            # List available skills (project, shared, team, global)
+
 Command Approval Mode:
   --command-mode <mode>    # Set mode: safe (default) or full
 
 Workspace Mode (Multi-Repository):
-  Create .nyiakeeper/workspace.conf with repo paths (one per line)
+  Create .nyiakeeper/workspace.conf with: <path> <ro|rw> (one per line)
+  RW repos: full git guards, branch sync; RO repos: read-only, no git needed
   Workspace is auto-detected; repos mounted at /project/{hash}/repos/
-  Same branch created on all workspace repos for coordinated work
   RAG disabled in workspace mode (multi-repo indexing not yet supported)
 
 Flavors:
@@ -603,10 +611,6 @@ parse_assistant_args() {
                 CREATE_BRANCH="true"
                 shift
                 ;;
-            --current-branch|-H)
-                CURRENT_BRANCH_MODE="true"
-                shift
-                ;;
             --build-custom-image)
                 BUILD_CUSTOM_IMAGE="true"
                 shift
@@ -636,6 +640,10 @@ parse_assistant_args() {
                 ;;
             --list-agents)
                 export LIST_AGENTS="true"
+                shift
+                ;;
+            --list-skills)
+                export LIST_SKILLS="true"
                 shift
                 ;;
             --command-mode)
@@ -683,8 +691,8 @@ parse_assistant_args() {
                     echo "  --build-custom-image Build custom image with overlays" >&2
                     echo "  --no-cache           Force rebuild without cache (use with --build-custom-image)" >&2
                     echo "  --base-branch <name> Specify Git base branch" >&2
-                    echo "  -H, --current-branch Work on current branch (skip branch creation)" >&2
-                    echo "  -w, --work-branch <name> Reuse work branch" >&2
+                    echo "  -w, --work-branch <name> Switch to specific work branch" >&2
+                    echo "  --create             Create work branch if it doesn't exist" >&2
                     echo "" >&2
                     echo "Example: nyia-claude --build-custom-image --no-cache" >&2
                     
@@ -747,11 +755,11 @@ parse_args() {
     export LIST_FLAVORS="false"
     export NYIA_AGENT=""
     export LIST_AGENTS="false"
+    export LIST_SKILLS="false"
     export DISABLE_EXCLUSIONS="false"
     export PROJECT_PATH=""
     export FLAVOR=""
     export BASE_BRANCH=""
-    export CURRENT_BRANCH_MODE="false"
         export COMMAND=""
     export ASSISTANT_NAME=""
     export USER_PROMPT=""
@@ -801,7 +809,7 @@ validate_args() {
 
 
     # Info-only flags bypass build validation (they exit before any build runs)
-    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" || "$LIST_AGENTS" == "true" ]]; then
+    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" || "$LIST_AGENTS" == "true" || "$LIST_SKILLS" == "true" ]]; then
         return 0
     fi
 
@@ -826,19 +834,6 @@ validate_args() {
     if [[ -n "$DOCKER_IMAGE" && "$BUILD_IMAGE" == "true" ]]; then
         echo "Error: --image cannot be used with --build (build creates specific images)" >&2
         exit 1
-    fi
-
-    # Validate --current-branch is mutually exclusive with --work-branch and --create
-    if [[ "$CURRENT_BRANCH_MODE" == "true" ]]; then
-        if [[ -n "$WORK_BRANCH" ]]; then
-            echo "Error: --current-branch cannot be used with --work-branch" >&2
-            echo "--current-branch works on your current branch, --work-branch switches to a specific one" >&2
-            exit 1
-        fi
-        if [[ "$CREATE_BRANCH" == "true" ]]; then
-            echo "Error: --current-branch cannot be used with --create" >&2
-            exit 1
-        fi
     fi
 
     # Validate --create requires --work-branch
@@ -955,6 +950,7 @@ debug_args() {
         echo "USER_PROMPT: $USER_PROMPT" >&2
         echo "NYIA_AGENT: $NYIA_AGENT" >&2
         echo "LIST_AGENTS: $LIST_AGENTS" >&2
+        echo "LIST_SKILLS: $LIST_SKILLS" >&2
         echo "NYIA_COMMAND_MODE_CLI: $NYIA_COMMAND_MODE_CLI" >&2
         echo "ENABLE_RAG: $ENABLE_RAG" >&2
         echo "NYIA_RAG_MODEL: ${NYIA_RAG_MODEL:-<from config>}" >&2

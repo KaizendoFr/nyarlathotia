@@ -4,37 +4,55 @@ How Nyia Keeper manages Git branches for AI-assisted development.
 
 ## Overview
 
-Nyia Keeper automatically creates isolated Git branches for AI work. This keeps your main branch clean and lets you review AI changes before merging.
+By default, Nyia Keeper works on your **current branch** — no new branch is created. If you're on a protected branch (main/master), it prompts you for a branch name.
 
-**Key principle**: AI work happens on separate branches, never directly on `main` or `master`.
+**Key principle**: AI work is never done directly on protected branches (main, master, plus any you configure).
 
 ---
 
-## Branch Creation Modes
-
-### Mode 1: Timestamped Branches (Default)
-
-When you run an assistant without branch flags, it creates a unique timestamped branch:
+## Default Behavior
 
 ```bash
+# On feature/auth → works on feature/auth (no new branch)
+git checkout feature/auth
 nyia-claude
-# Creates: claude-2026-01-11-143052
+
+# On main → interactive prompt for branch name
+nyia-claude
+# "You're on protected branch 'main'. Branch name [claude-2026-03-08-143000]: "
 ```
 
-**Format**: `{assistant}-{YYYY}-{MM}-{DD}-{HHMMSS}`
+**Non-interactive mode** (piped stdin): errors with a suggestion:
+```
+Use: nyia-claude --work-branch <name> --create
+```
 
-**Use when**:
-- Quick tasks or experiments
-- You don't need to resume later
-- You want automatic unique naming
+---
+
+## Branch Modes
+
+### Mode 1: Current Branch (Default)
+
+Works on whatever branch you're already on. No switching, no creation.
+
+```bash
+git checkout feature/auth
+nyia-claude
+# Works on feature/auth
+```
+
+**Protected branch guard**: If on main/master (or a configured protected branch), you'll be prompted to switch.
 
 ### Mode 2: Named Work Branches
 
-Create a named branch for ongoing work:
+Switch to or create a named branch:
 
 ```bash
+# Switch to existing branch
+nyia-claude --work-branch feature/auth
+
+# Create if missing
 nyia-claude --work-branch feature/auth --create
-# Creates: feature/auth
 ```
 
 **Use when**:
@@ -42,63 +60,26 @@ nyia-claude --work-branch feature/auth --create
 - You want meaningful branch names
 - You plan to resume work later
 
-### Mode 3: Resume Existing Branch
+### Mode 3: Auto-Branch (Legacy)
 
-Switch to a branch you created earlier:
+Create a unique timestamped branch automatically. This was the original default.
 
-```bash
-nyia-claude --work-branch feature/auth
-# Switches to existing feature/auth
-```
-
-**Behavior**:
-- If branch exists: switches to it
-- If branch missing: shows error with suggestions
-
-### Mode 4: Current Branch (`-H`)
-
-Work directly on whatever branch you're already on. No branch creation, no switching, no cleanup on exit.
+Enable via config: `NYIA_AUTO_BRANCH=true` in `~/.config/nyiakeeper/config/nyia.conf`
 
 ```bash
-git checkout feature/auth
-nyia-claude -H
-# Works on feature/auth — no new branch created
+nyia-claude
+# Creates: claude-2026-03-08-143052
 ```
 
-**Use when**:
-- You already checked out the right branch
-- You don't want nyia to manage branches at all
-- You want the simplest, lowest-friction workflow
-
-**Restrictions**:
-- Cannot use on protected branches (main/master)
-- Cannot use in workspace mode
-- Cannot combine with `--work-branch` or `--create`
+**Format**: `{assistant}-{YYYY}-{MM}-{DD}-{HHMMSS}`
 
 ---
 
 ## Flags Reference
 
-### `--current-branch` / `-H`
-
-Work on the current branch. Skips all branch creation and cleanup.
-
-```bash
-# Simplest usage
-nyia-claude -H
-
-# Long form
-nyia-claude --current-branch
-```
-
-**Protected branch guard**: If you're on `main` or `master`, this will error:
-```
-Cannot use protected branch as work branch: 'main'
-```
-
 ### `--work-branch <name>` / `-w`
 
-Specify a named branch instead of creating a timestamped one.
+Switch to a specific branch.
 
 ```bash
 # Switch to existing branch
@@ -135,9 +116,6 @@ Specify which branch to create new branches from.
 ```bash
 # Create feature/auth from develop (not current branch)
 nyia-claude --work-branch feature/auth --create --base-branch develop
-
-# Timestamped branch from develop
-nyia-claude --base-branch develop
 ```
 
 **Default**: Current branch (HEAD)
@@ -155,7 +133,7 @@ nyia-claude --work-branch feature/user-auth --create --base-branch main
 # Option 2: Named branch from current
 nyia-claude --work-branch feature/user-auth --create
 
-# Option 3: Timestamped (quick work)
+# Option 3: Just work on current branch
 nyia-claude
 ```
 
@@ -190,18 +168,70 @@ nyia-claude --work-branch feature/api --create
 
 ## Protected Branches
 
-Nyia Keeper prevents direct work on protected branches:
+Nyia Keeper prevents direct work on protected branches.
+
+### Hardcoded (always protected)
 
 - `main`
 - `master`
 
-**Attempting to use protected branch**:
+### Configurable (additive)
+
+Add more protected branches via config:
+
 ```bash
-nyia-claude --work-branch main --create
-# Error: Cannot use protected branch as work branch: 'main'
+# In ~/.config/nyiakeeper/config/nyia.conf (global)
+NYIA_PROTECTED_BRANCHES="develop,staging,production"
+
+# In .nyiakeeper/nyia.conf (per-project)
+NYIA_PROTECTED_BRANCHES="release"
 ```
 
-**Why**: Protects your main branch from accidental AI commits.
+Both files are **merged** (union) — project config adds to global, it doesn't replace it.
+
+### Dynamic detection
+
+- Git default branch (from `refs/remotes/origin/HEAD`)
+- GitHub API protected branches (if `gh` CLI available)
+
+### What happens on a protected branch
+
+**Interactive** (terminal): prompts for a branch name with an auto-generated default:
+```
+You're on protected branch 'main'.
+Branch name [claude-2026-03-08-143000]: _
+```
+- Press Enter → uses the auto-generated name
+- Type a name → uses your name
+- Type a protected branch name → error
+
+**Non-interactive** (piped/scripted): error with suggestion:
+```
+Use: nyia-claude --work-branch <name> --create
+```
+
+---
+
+## Configuration
+
+### `NYIA_AUTO_BRANCH`
+
+Controls default branch strategy.
+
+| Value | Behavior |
+|-------|----------|
+| `false` (default) | Work on current branch |
+| `true` | Auto-create timestamped branch |
+
+Set in `~/.config/nyiakeeper/config/nyia.conf` or `.nyiakeeper/nyia.conf`.
+
+### `NYIA_PROTECTED_BRANCHES`
+
+Comma-separated list of additional protected branches. Extends (never replaces) the hardcoded minimum.
+
+```bash
+NYIA_PROTECTED_BRANCHES="develop,staging,production"
+```
 
 ---
 
@@ -282,7 +312,11 @@ Usage: nyia-assistant --work-branch feature/my-branch --create
    │   └─ Missing:
    │       ├─ --create: create from --base-branch (or current)
    │       └─ No --create: ERROR with suggestions
-   └─ No: Create timestamped branch from --base-branch (or current)
+   └─ No: Check NYIA_AUTO_BRANCH
+       ├─ true: Create timestamped branch
+       └─ false (default): Work on current branch
+           ├─ Protected: prompt for branch name (or error in non-interactive)
+           └─ Not protected: proceed on current branch
 ```
 
 ### What Gets Created
@@ -303,6 +337,7 @@ When creating a new branch:
 - Use `--create` explicitly when making new branches
 - Check `git branch` before resuming work
 - Review AI commits before merging to main
+- Configure `NYIA_PROTECTED_BRANCHES` for team branches
 
 ### Don't
 

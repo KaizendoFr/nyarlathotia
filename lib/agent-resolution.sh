@@ -6,14 +6,15 @@
 # Resolves agent persona paths and lists available agents per assistant
 # Scope precedence: session (--agent) > project-local > global user > default
 
-# Get assistant-specific agent directories (project-local and global)
-# Returns two paths: project-local first, then global
+# Get assistant-specific agent directories (project-local, project-shared, and global)
+# Returns three paths: project-local first, then project-shared, then global
 get_agent_dirs() {
     local assistant_cli="$1"
     local project_path="$2"
     local nyiakeeper_home="$3"
 
     local project_dir=""
+    local shared_dir=""
     local global_dir=""
 
     case "$assistant_cli" in
@@ -40,7 +41,13 @@ get_agent_dirs() {
             ;;
     esac
 
+    # Project-shared agents (universal, all assistants except codex/gemini)
+    if [[ -n "$project_dir" ]]; then
+        shared_dir="$project_path/.nyiakeeper/shared/agents"
+    fi
+
     echo "$project_dir"
+    echo "$shared_dir"
     echo "$global_dir"
 }
 
@@ -57,7 +64,7 @@ get_agent_file_pattern() {
 }
 
 # List available agents for an assistant
-# Scans project-local and global directories
+# Scans project-local, project-shared, and global directories
 list_agents() {
     local assistant_cli="$1"
     local project_path="$2"
@@ -66,9 +73,11 @@ list_agents() {
     local dirs
     dirs=$(get_agent_dirs "$assistant_cli" "$project_path" "$nyiakeeper_home")
     local project_dir
-    project_dir=$(echo "$dirs" | head -1)
+    project_dir=$(echo "$dirs" | sed -n '1p')
+    local shared_dir
+    shared_dir=$(echo "$dirs" | sed -n '2p')
     local global_dir
-    global_dir=$(echo "$dirs" | tail -1)
+    global_dir=$(echo "$dirs" | sed -n '3p')
 
     local found_any=false
 
@@ -126,6 +135,26 @@ list_agents() {
         fi
     fi
 
+    # Project-shared agents (.nyiakeeper/shared/agents/)
+    if [[ -n "$shared_dir" && -d "$shared_dir" ]]; then
+        local shared_agents=()
+        for pattern in $patterns; do
+            while IFS= read -r -d '' f; do
+                shared_agents+=("$f")
+            done < <(find "$shared_dir" -maxdepth 1 -name "$pattern" -type f -print0 2>/dev/null)
+        done
+        if [[ ${#shared_agents[@]} -gt 0 ]]; then
+            echo "  Shared agents ($shared_dir/):"
+            for agent_file in "${shared_agents[@]}"; do
+                local name
+                name=$(basename "$agent_file" | sed 's/\.[^.]*$//')
+                printf "    %-20s %s\n" "$name" "($(basename "$agent_file"))"
+            done
+            echo ""
+            found_any=true
+        fi
+    fi
+
     # Global agents
     if [[ -n "$global_dir" && -d "$global_dir" ]]; then
         local global_agents=()
@@ -155,6 +184,9 @@ list_agents() {
         echo "  No agent personas found."
         echo ""
         echo "  To create an agent, add a definition file to:"
+        if [[ -n "$shared_dir" ]]; then
+            echo "    Shared:  $shared_dir/"
+        fi
         if [[ -n "$project_dir" ]]; then
             echo "    Project: $project_dir/"
         fi
@@ -181,9 +213,11 @@ agent_exists() {
     local dirs
     dirs=$(get_agent_dirs "$assistant_cli" "$project_path" "$nyiakeeper_home")
     local project_dir
-    project_dir=$(echo "$dirs" | head -1)
+    project_dir=$(echo "$dirs" | sed -n '1p')
+    local shared_dir
+    shared_dir=$(echo "$dirs" | sed -n '2p')
     local global_dir
-    global_dir=$(echo "$dirs" | tail -1)
+    global_dir=$(echo "$dirs" | sed -n '3p')
 
     local patterns
     patterns=$(get_agent_file_pattern "$assistant_cli")
@@ -197,8 +231,8 @@ agent_exists() {
         set -f
     fi
 
-    # Check project-local first (higher precedence)
-    for dir in "$project_dir" "$global_dir"; do
+    # Check project-local first, then shared, then global (precedence order)
+    for dir in "$project_dir" "$shared_dir" "$global_dir"; do
         if [[ -n "$dir" && -d "$dir" ]]; then
             for pattern in $patterns; do
                 local ext="${pattern#\*}"

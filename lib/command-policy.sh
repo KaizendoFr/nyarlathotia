@@ -18,12 +18,16 @@ _NYIA_COMMAND_POLICY_LOADED=1
 readonly NYIA_USER_CONFIG_KEYS=(
     "NYIA_COMMAND_MODE"
     "NYIA_RAG_MODEL"
+    "NYIA_TEAM_DIR"
+    "NYIA_WORKSPACE_SYNC"
 )
 
 # === VALID VALUES ===
 readonly NYIA_VALID_COMMAND_MODES=("safe" "full")
 readonly NYIA_DEFAULT_COMMAND_MODE="safe"
 readonly NYIA_DEFAULT_RAG_MODEL="nomic-embed-text"
+readonly NYIA_DEFAULT_TEAM_DIR=""
+readonly NYIA_DEFAULT_WORKSPACE_SYNC="false"
 
 # === KEY NAME MAPPING ===
 # Maps user-friendly short names to internal variable names
@@ -33,8 +37,12 @@ _map_config_key_name() {
     case "$key" in
         command_mode)  echo "NYIA_COMMAND_MODE" ;;
         rag_model)     echo "NYIA_RAG_MODEL" ;;
+        team_dir)      echo "NYIA_TEAM_DIR" ;;
+        workspace_sync) echo "NYIA_WORKSPACE_SYNC" ;;
         NYIA_COMMAND_MODE)  echo "NYIA_COMMAND_MODE" ;;
         NYIA_RAG_MODEL)     echo "NYIA_RAG_MODEL" ;;
+        NYIA_TEAM_DIR)      echo "NYIA_TEAM_DIR" ;;
+        NYIA_WORKSPACE_SYNC) echo "NYIA_WORKSPACE_SYNC" ;;
         *)             echo "" ;;
     esac
 }
@@ -81,6 +89,22 @@ validate_config_value() {
                 echo "Error: rag_model cannot be empty" >&2
                 return 1
             fi
+            ;;
+        NYIA_TEAM_DIR)
+            # Any non-empty string is valid (directory path)
+            if [[ -z "$value" ]]; then
+                echo "Error: team_dir cannot be empty. Use 'nyia config global team_dir=' to unset." >&2
+                return 1
+            fi
+            ;;
+        NYIA_WORKSPACE_SYNC)
+            case "$value" in
+                true|false) ;;
+                *)
+                    echo "Error: Invalid workspace_sync value '$value'. Valid values: true, false" >&2
+                    return 1
+                    ;;
+            esac
             ;;
         *)
             echo "Error: Unknown config key '$key'" >&2
@@ -188,20 +212,24 @@ parse_config_file() {
     return 0
 }
 
-# === 6-LEVEL RESOLVER ===
-# Walks precedence levels 1-6 and returns the first defined NYIA_COMMAND_MODE.
+# === 9-LEVEL RESOLVER ===
+# Walks precedence levels 1-9 and returns the first defined NYIA_COMMAND_MODE.
+# "Closest to code wins" — higher levels override lower ones.
 #
-# Levels:
+# Levels (highest priority first):
 #   1. CLI override (NYIA_COMMAND_MODE_CLI env var, set by cli-parser.sh)
 #   2. Project + assistant (.nyiakeeper/{assistant}.conf) — safe parsed
-#   3. Project global (.nyiakeeper/nyia.conf) — safe parsed
-#   4. Global + assistant (~/.config/nyiakeeper/config/{assistant}.conf) — source OK
-#   5. Global (~/.config/nyiakeeper/config/nyia.conf) — source OK
-#   6. Default (safe)
+#   3. Project private (.nyiakeeper/private/config/nyia.conf) — safe parsed
+#   4. Project global (.nyiakeeper/nyia.conf) — safe parsed (write target for `nyia config project`)
+#   5. Project shared (.nyiakeeper/shared/config/nyia.conf) — safe parsed
+#   6. Global + assistant (~/.config/nyiakeeper/config/{assistant}.conf) — source OK
+#   7. Global (~/.config/nyiakeeper/config/nyia.conf) — source OK
+#   8. Team ($NYIA_TEAM_DIR/config/nyia.conf) — safe parsed (untrusted)
+#   9. Default (safe)
 #
 # Arguments:
 #   $1 - assistant name (e.g., "claude", "codex")
-#   $2 - project path (optional, for levels 2-3)
+#   $2 - project path (optional, for levels 2-5)
 #
 # Outputs:
 #   Prints the effective command mode to stdout.
@@ -234,7 +262,18 @@ resolve_command_mode() {
         fi
     fi
 
-    # Level 3: Project global
+    # Level 3: Project private config
+    if [[ -z "$mode" && -n "$project_path" ]]; then
+        local f="$project_path/.nyiakeeper/private/config/nyia.conf"
+        if [[ -f "$f" ]]; then
+            local val
+            val=$(parse_config_file "$f" "NYIA_COMMAND_MODE") && {
+                [[ -n "$val" ]] && mode="$val" && source_label="project-private"
+            }
+        fi
+    fi
+
+    # Level 4: Project global (existing write target for `nyia config project`)
     if [[ -z "$mode" && -n "$project_path" ]]; then
         local project_global_conf="$project_path/.nyiakeeper/nyia.conf"
         if [[ -f "$project_global_conf" ]]; then
@@ -248,7 +287,18 @@ resolve_command_mode() {
         fi
     fi
 
-    # Level 4: Global + assistant (existing per-assistant .conf files — source OK)
+    # Level 5: Project shared config
+    if [[ -z "$mode" && -n "$project_path" ]]; then
+        local f="$project_path/.nyiakeeper/shared/config/nyia.conf"
+        if [[ -f "$f" ]]; then
+            local val
+            val=$(parse_config_file "$f" "NYIA_COMMAND_MODE") && {
+                [[ -n "$val" ]] && mode="$val" && source_label="project-shared"
+            }
+        fi
+    fi
+
+    # Level 6: Global + assistant (existing per-assistant .conf files — source OK)
     if [[ -z "$mode" && -n "$assistant_name" ]]; then
         local global_assistant_conf="$config_home/${assistant_name}.conf"
         if [[ -f "$global_assistant_conf" ]]; then
@@ -263,7 +313,7 @@ resolve_command_mode() {
         fi
     fi
 
-    # Level 5: Global cross-assistant
+    # Level 7: Global cross-assistant
     if [[ -z "$mode" ]]; then
         local global_conf="$config_home/nyia.conf"
         if [[ -f "$global_conf" ]]; then
@@ -277,7 +327,21 @@ resolve_command_mode() {
         fi
     fi
 
-    # Level 6: Default
+    # Level 8: Team config (safe-parsed — untrusted, another team member wrote it)
+    if [[ -z "$mode" ]]; then
+        local team_dir=""
+        if [[ -f "$config_home/nyia.conf" ]]; then
+            team_dir=$(_source_config_key "$config_home/nyia.conf" "NYIA_TEAM_DIR") || true
+        fi
+        if [[ -n "$team_dir" && -f "$team_dir/config/nyia.conf" ]]; then
+            local val
+            val=$(parse_config_file "$team_dir/config/nyia.conf" "NYIA_COMMAND_MODE") && {
+                [[ -n "$val" ]] && mode="$val" && source_label="team"
+            }
+        fi
+    fi
+
+    # Level 9: Default
     if [[ -z "$mode" ]]; then
         mode="$NYIA_DEFAULT_COMMAND_MODE"
         source_label="default"
@@ -504,6 +568,24 @@ read_effective_config_value() {
             local src="${result#*	}"
             echo "$model (source: $src)"
             ;;
+        NYIA_TEAM_DIR)
+            local result
+            result=$(_resolve_team_dir_config)
+            local dir="${result%%	*}"
+            local src="${result#*	}"
+            if [[ -n "$dir" ]]; then
+                echo "$dir (source: $src)"
+            else
+                echo "(not configured)"
+            fi
+            ;;
+        NYIA_WORKSPACE_SYNC)
+            local result
+            result=$(_resolve_workspace_sync_config "$project_path")
+            local val="${result%%	*}"
+            local src="${result#*	}"
+            echo "$val (source: $src)"
+            ;;
         *)
             echo "Error: Unknown key '$key'" >&2
             return 1
@@ -511,7 +593,108 @@ read_effective_config_value() {
     esac
 }
 
-# Simple resolver for NYIA_RAG_MODEL (same 6-level pattern)
+# Simple resolver for NYIA_TEAM_DIR (global-only — team dir is a user preference, not per-project)
+_resolve_team_dir_config() {
+    local dir=""
+    local source_label=""
+    local config_home="${NYIA_CONFIG_HOME:-${HOME}/.config/nyiakeeper/config}"
+
+    # Only global config (team dir is a user-level setting, not project-level)
+    local f="$config_home/nyia.conf"
+    if [[ -f "$f" ]]; then
+        local val
+        val=$(_source_config_key "$f" "NYIA_TEAM_DIR") && {
+            [[ -n "$val" ]] && dir="$val" && source_label="global"
+        }
+    fi
+
+    if [[ -z "$dir" ]]; then
+        dir="$NYIA_DEFAULT_TEAM_DIR"
+        source_label="default"
+    fi
+
+    printf '%s\t%s\n' "$dir" "$source_label"
+}
+
+# Unified resolver for NYIA_WORKSPACE_SYNC
+# Precedence: workspace.conf directive > global config > default (false)
+# Used by both runtime behavior AND `nyia config view` to ensure they agree.
+# Arguments:
+#   $1 - project path (optional — needed to read workspace.conf directive)
+_resolve_workspace_sync_config() {
+    local project_path="${1:-}"
+    local sync=""
+    local source_label=""
+    local config_home="${NYIA_CONFIG_HOME:-${HOME}/.config/nyiakeeper/config}"
+
+    # Level 1: workspace.conf directive (closest to code wins)
+    if [[ -z "$sync" && -n "$project_path" ]]; then
+        local conf_file="$project_path/.nyiakeeper/workspace.conf"
+        if [[ -f "$conf_file" ]]; then
+            local directive_val=""
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ -z "$line" ]] && continue
+                [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                # Trim whitespace
+                line="${line#"${line%%[![:space:]]*}"}"
+                line="${line%"${line##*[![:space:]]}"}"
+                [[ -z "$line" ]] && continue
+                # Known-prefix matching for directives
+                if [[ "$line" =~ ^sync_branches= ]]; then
+                    directive_val="${line#sync_branches=}"
+                    # Strip quotes
+                    if [[ "$directive_val" =~ ^\"(.*)\"$ ]]; then
+                        directive_val="${BASH_REMATCH[1]}"
+                    elif [[ "$directive_val" =~ ^\'(.*)\'$ ]]; then
+                        directive_val="${BASH_REMATCH[1]}"
+                    fi
+                fi
+            done < "$conf_file"
+            if [[ -n "$directive_val" ]]; then
+                case "$directive_val" in
+                    true|false)
+                        sync="$directive_val"
+                        source_label="workspace.conf"
+                        ;;
+                    *)
+                        echo "Warning: Invalid value '$directive_val' for sync_branches in workspace.conf, ignoring" >&2
+                        ;;
+                esac
+            fi
+        fi
+    fi
+
+    # Level 2: Global config
+    if [[ -z "$sync" ]]; then
+        local f="$config_home/nyia.conf"
+        if [[ -f "$f" ]]; then
+            local val
+            val=$(_source_config_key "$f" "NYIA_WORKSPACE_SYNC") && {
+                [[ -n "$val" ]] && sync="$val" && source_label="global"
+            }
+        fi
+    fi
+
+    # Level 3: Default
+    if [[ -z "$sync" ]]; then
+        sync="$NYIA_DEFAULT_WORKSPACE_SYNC"
+        source_label="default"
+    fi
+
+    # Validate
+    case "$sync" in
+        true|false) ;;
+        *)
+            echo "Warning: Invalid workspace_sync '$sync' from $source_label, falling back to false" >&2
+            sync="false"
+            source_label="default(fallback)"
+            ;;
+    esac
+
+    printf '%s\t%s\n' "$sync" "$source_label"
+}
+
+# Resolver for NYIA_RAG_MODEL (same 9-level pattern as command_mode)
 _resolve_rag_model() {
     local assistant_name="${1:-}"
     local project_path="${2:-}"
@@ -530,7 +713,18 @@ _resolve_rag_model() {
         fi
     fi
 
-    # Level 3: Project global
+    # Level 3: Project private config
+    if [[ -z "$model" && -n "$project_path" ]]; then
+        local f="$project_path/.nyiakeeper/private/config/nyia.conf"
+        if [[ -f "$f" ]]; then
+            local val
+            val=$(parse_config_file "$f" "NYIA_RAG_MODEL") && {
+                [[ -n "$val" ]] && model="$val" && source_label="project-private"
+            }
+        fi
+    fi
+
+    # Level 4: Project global
     if [[ -z "$model" && -n "$project_path" ]]; then
         local f="$project_path/.nyiakeeper/nyia.conf"
         if [[ -f "$f" ]]; then
@@ -541,7 +735,18 @@ _resolve_rag_model() {
         fi
     fi
 
-    # Level 4: Global + assistant
+    # Level 5: Project shared config
+    if [[ -z "$model" && -n "$project_path" ]]; then
+        local f="$project_path/.nyiakeeper/shared/config/nyia.conf"
+        if [[ -f "$f" ]]; then
+            local val
+            val=$(parse_config_file "$f" "NYIA_RAG_MODEL") && {
+                [[ -n "$val" ]] && model="$val" && source_label="project-shared"
+            }
+        fi
+    fi
+
+    # Level 6: Global + assistant
     if [[ -z "$model" && -n "$assistant_name" ]]; then
         local f="$config_home/${assistant_name}.conf"
         if [[ -f "$f" ]]; then
@@ -552,7 +757,7 @@ _resolve_rag_model() {
         fi
     fi
 
-    # Level 5: Global
+    # Level 7: Global
     if [[ -z "$model" ]]; then
         local f="$config_home/nyia.conf"
         if [[ -f "$f" ]]; then
@@ -563,7 +768,21 @@ _resolve_rag_model() {
         fi
     fi
 
-    # Level 6: Default
+    # Level 8: Team config
+    if [[ -z "$model" ]]; then
+        local team_dir=""
+        if [[ -f "$config_home/nyia.conf" ]]; then
+            team_dir=$(_source_config_key "$config_home/nyia.conf" "NYIA_TEAM_DIR") || true
+        fi
+        if [[ -n "$team_dir" && -f "$team_dir/config/nyia.conf" ]]; then
+            local val
+            val=$(parse_config_file "$team_dir/config/nyia.conf" "NYIA_RAG_MODEL") && {
+                [[ -n "$val" ]] && model="$val" && source_label="team"
+            }
+        fi
+    fi
+
+    # Level 9: Default
     if [[ -z "$model" ]]; then
         model="$NYIA_DEFAULT_RAG_MODEL"
         source_label="default"

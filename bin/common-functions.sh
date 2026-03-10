@@ -318,6 +318,83 @@ ensure_project_prompts_directory() {
     if [[ ! -f "$project_prompts_dir/README.md" ]]; then
         generate_project_prompts_templates "$project_prompts_dir"
     fi
+
+    # Auto-create shared/private structure for all projects (Plan 180)
+    init_shared_structure "$project_path" "quiet"
+}
+
+# Initialize .nyiakeeper/shared/ and .nyiakeeper/private/ project structure
+# Non-destructive: does not move existing files or modify .gitignore
+# Usage: init_shared_structure <project_path> [quiet]
+#   quiet mode: create dirs silently (used by auto-init in ensure_project_prompts_directory)
+#   verbose mode (default): print summary and gitignore guidance
+init_shared_structure() {
+    local project_path="$1"
+    local mode="${2:-verbose}"
+    local shared_base="$project_path/.nyiakeeper/shared"
+    local private_base="$project_path/.nyiakeeper/private"
+
+    local created=0
+
+    # Create shared directories with README placeholders
+    for subdir in skills agents prompts config; do
+        local dir="$shared_base/$subdir"
+        if [[ ! -d "$dir" ]]; then
+            mkdir -p "$dir"
+            created=$((created + 1))
+        fi
+        if [[ ! -f "$dir/README.md" ]]; then
+            cat > "$dir/README.md" << EOF
+# Shared ${subdir^}
+
+Place ${subdir} here to share them with your team via project git.
+These are propagated to each assistant at launch.
+EOF
+        fi
+    done
+
+    # Create private directory (empty)
+    if [[ ! -d "$private_base" ]]; then
+        mkdir -p "$private_base"
+        created=$((created + 1))
+    fi
+
+    # In quiet mode, skip all output (used by auto-init)
+    if [[ "$mode" == "quiet" ]]; then
+        return 0
+    fi
+
+    # Verbose mode: print summary and guidance
+    if [[ $created -gt 0 ]]; then
+        print_success "Created shared/private project structure"
+    else
+        print_info "Shared/private structure already exists"
+    fi
+    echo ""
+    echo "  Shared (commit to git):"
+    echo "    $shared_base/skills/    — shared skills (need SKILL.md)"
+    echo "    $shared_base/agents/    — shared agents (all assistants)"
+    echo "    $shared_base/prompts/   — shared prompt overlays"
+    echo "    $shared_base/config/    — shared config (read-only)"
+    echo ""
+    echo "  Private (git-ignored):"
+    echo "    $private_base/          — local credentials, context"
+    echo ""
+
+    # Print gitignore guidance
+    print_info "Add the following to your .gitignore:"
+    echo ""
+    echo "  # Nyia Keeper — private (never commit)"
+    echo "  .nyiakeeper/private/"
+    echo "  .claude/"
+    echo "  .codex/"
+    echo "  .vibe/"
+    echo "  .opencode/"
+    echo "  .gemini/"
+    echo ""
+    echo "  # Nyia Keeper — shared (commit these)"
+    echo "  # .nyiakeeper/shared/ is safe to commit"
+    echo ""
 }
 
 # Generate user prompts directory with templates and README
@@ -832,6 +909,253 @@ propagate_user_agents() {
     fi
 }
 
+# Propagate project-shared skills from .nyiakeeper/shared/skills/ to
+# the launching assistant's project-level skill directory.
+# Per-launch copy with no-clobber semantics.
+propagate_shared_skills() {
+    local assistant_cli="$1"
+    local project_path="$2"
+
+    local source_dir="$project_path/.nyiakeeper/shared/skills"
+    local target_dir="$project_path/.$assistant_cli/skills"
+
+    # Silent no-op if shared skills directory doesn't exist
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for skill_dir in "$source_dir"/*/; do
+        # Skip if glob didn't match (no subdirectories)
+        [[ -d "$skill_dir" ]] || continue
+
+        local skill_name=$(basename "$skill_dir")
+
+        # Only copy directories containing SKILL.md
+        if [[ ! -f "$skill_dir/SKILL.md" ]]; then
+            print_verbose "Skipping shared skill '$skill_name': no SKILL.md"
+            continue
+        fi
+
+        # No-clobber: skip if target already exists
+        if [[ -d "$target_dir/$skill_name" ]]; then
+            print_verbose "Shared skill '$skill_name' already exists at target, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Copy skill directory to assistant project dir
+        mkdir -p "$target_dir"
+        cp -r "$skill_dir" "$target_dir/$skill_name"
+        print_verbose "Propagated shared skill '$skill_name' to .$assistant_cli"
+        copied=$((copied + 1))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied shared skill(s) to .$assistant_cli ($skipped already existed)"
+    fi
+}
+
+# Propagate project-shared agents from .nyiakeeper/shared/agents/ to
+# the launching assistant's project-level agent directory.
+# Universal: copies to ALL assistants. Skips codex/gemini (config-based).
+# Per-launch copy with no-clobber semantics.
+propagate_shared_agents() {
+    local assistant_cli="$1"
+    local project_path="$2"
+
+    # Codex and Gemini use config-based agents, not file-based
+    case "$assistant_cli" in
+        codex|gemini) return 0 ;;
+    esac
+
+    local source_dir="$project_path/.nyiakeeper/shared/agents"
+    local target_dir="$project_path/.$assistant_cli/agents"
+
+    # Silent no-op if shared agents directory doesn't exist
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for agent_file in "$source_dir"/*; do
+        # Skip if glob didn't match (empty directory)
+        [[ -e "$agent_file" ]] || continue
+
+        # Only copy regular files, skip dotfiles and directories
+        local filename=$(basename "$agent_file")
+        [[ "$filename" == .* ]] && continue
+        [[ -f "$agent_file" ]] || continue
+
+        # No-clobber: skip if target already exists
+        if [[ -f "$target_dir/$filename" ]]; then
+            print_verbose "Shared agent '$filename' already exists at target, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Copy agent file to assistant project dir
+        mkdir -p "$target_dir"
+        cp "$agent_file" "$target_dir/$filename"
+        print_verbose "Propagated shared agent '$filename' to .$assistant_cli"
+        copied=$((copied + 1))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied shared agent(s) to .$assistant_cli ($skipped already existed)"
+    fi
+}
+
+# Resolve team directory from user config.
+# Returns the validated path on stdout if available, empty string otherwise.
+# Opportunistic: missing dir or empty dir → warning + return empty, never fatal.
+resolve_team_dir() {
+    local config_home="${NYIA_CONFIG_HOME:-${HOME}/.config/nyiakeeper/config}"
+    local team_dir=""
+
+    # Read NYIA_TEAM_DIR from global config
+    local global_conf="$config_home/nyia.conf"
+    if [[ -f "$global_conf" ]]; then
+        team_dir=$(grep -E '^NYIA_TEAM_DIR=' "$global_conf" 2>/dev/null | head -1 | sed 's/^NYIA_TEAM_DIR=//' | sed 's/^["'\'']//' | sed 's/["'\'']$//')
+    fi
+
+    # Not configured → silent no-op
+    if [[ -z "$team_dir" ]]; then
+        return 0
+    fi
+
+    # Configured but dir doesn't exist → warning
+    if [[ ! -d "$team_dir" ]]; then
+        print_verbose "Team dir configured but does not exist: $team_dir"
+        return 0
+    fi
+
+    # Dir exists but has no recognizable content → warning
+    local has_content=false
+    for subdir in skills agents prompts config; do
+        if [[ -d "$team_dir/$subdir" ]]; then
+            has_content=true
+            break
+        fi
+    done
+
+    if [[ "$has_content" != "true" ]]; then
+        print_verbose "Team dir configured but has no content (no skills/agents/prompts/config subdirs): $team_dir"
+        return 0
+    fi
+
+    echo "$team_dir"
+}
+
+# Propagate team skills from $NYIA_TEAM_DIR/skills/ to the assistant's
+# global config skill directory ($NYIAKEEPER_HOME/$assistant/skills/).
+# Called AFTER propagate_user_skills() so user skills win (no-clobber).
+# Per-launch copy with no-clobber semantics.
+propagate_team_skills() {
+    local assistant_cli="$1"
+    local team_dir="$2"
+    local nyiakeeper_home="$3"
+
+    local source_dir="$team_dir/skills"
+    local target_dir="$nyiakeeper_home/$assistant_cli/skills"
+
+    # Silent no-op if team skills directory doesn't exist
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for skill_dir in "$source_dir"/*/; do
+        # Skip if glob didn't match (no subdirectories)
+        [[ -d "$skill_dir" ]] || continue
+
+        local skill_name=$(basename "$skill_dir")
+
+        # Only copy directories containing SKILL.md
+        if [[ ! -f "$skill_dir/SKILL.md" ]]; then
+            print_verbose "Skipping team skill '$skill_name': no SKILL.md"
+            continue
+        fi
+
+        # No-clobber: skip if target already exists (user skill wins)
+        if [[ -d "$target_dir/$skill_name" ]]; then
+            print_verbose "Team skill '$skill_name' already exists at target, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Copy skill directory to assistant config
+        mkdir -p "$target_dir"
+        cp -r "$skill_dir" "$target_dir/$skill_name"
+        print_verbose "Propagated team skill '$skill_name' to $assistant_cli"
+        copied=$((copied + 1))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied team skill(s) to $assistant_cli ($skipped already existed)"
+    fi
+}
+
+# Propagate team agents from $NYIA_TEAM_DIR/agents/ to the assistant's
+# global config agent directory ($NYIAKEEPER_HOME/$assistant/agents/).
+# Universal: copies to ALL file-based assistants. Skips codex/gemini.
+# Called AFTER propagate_user_agents() so user agents win (no-clobber).
+# Per-launch copy with no-clobber semantics.
+propagate_team_agents() {
+    local assistant_cli="$1"
+    local team_dir="$2"
+    local nyiakeeper_home="$3"
+
+    # Codex and Gemini use config-based agents, not file-based
+    case "$assistant_cli" in
+        codex|gemini) return 0 ;;
+    esac
+
+    local source_dir="$team_dir/agents"
+    local target_dir="$nyiakeeper_home/$assistant_cli/agents"
+
+    # Silent no-op if team agents directory doesn't exist
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+
+    local copied=0
+    local skipped=0
+
+    for agent_file in "$source_dir"/*; do
+        # Skip if glob didn't match (empty directory)
+        [[ -e "$agent_file" ]] || continue
+
+        # Only copy regular files, skip dotfiles and directories
+        local filename=$(basename "$agent_file")
+        [[ "$filename" == .* ]] && continue
+        [[ -f "$agent_file" ]] || continue
+
+        # No-clobber: skip if target already exists (user agent wins)
+        if [[ -f "$target_dir/$filename" ]]; then
+            print_verbose "Team agent '$filename' already exists at target, skipping"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Copy agent file to assistant config
+        mkdir -p "$target_dir"
+        cp "$agent_file" "$target_dir/$filename"
+        print_verbose "Propagated team agent '$filename' to $assistant_cli"
+        copied=$((copied + 1))
+    done
+
+    if [[ $copied -gt 0 ]]; then
+        print_verbose "Propagated $copied team agent(s) to $assistant_cli ($skipped already existed)"
+    fi
+}
+
 # === VERSION MANAGEMENT ===
 
 # Get installed version from VERSION file
@@ -1240,8 +1564,9 @@ compose_project_prompt() {
     local script_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
     local nyia_prompts="$script_dir/../docker/shared/system-prompts"
     local user_prompts="$nyia_home/prompts"
+    local shared_prompts="$project_path/.nyiakeeper/shared/prompts"
     local project_prompts="$project_path/.nyiakeeper/prompts"
-    
+
     # 1. Protected prefix (security constraints)
     if [[ -f "$nyia_prompts/protected/universal-prefix.md" ]]; then
         final_prompt+="$(cat "$nyia_prompts/protected/universal-prefix.md")"$'\n\n'
@@ -1249,37 +1574,58 @@ compose_project_prompt() {
         print_error "Critical: Missing protected prefix"
         return 1
     fi
-    
+
     # 2. Configurable universal base
     if [[ -f "$nyia_prompts/configurable/universal-base.md" ]]; then
         final_prompt+="$(cat "$nyia_prompts/configurable/universal-base.md")"$'\n\n'
     fi
-    
+
     # 3. User global base overrides
     if [[ -f "$user_prompts/base-overrides.md" ]]; then
         final_prompt+="# User Base Customizations"$'\n'
         final_prompt+="$(cat "$user_prompts/base-overrides.md")"$'\n\n'
     fi
-    
+
     # 4. Assistant-specific configurable
     if [[ -f "$nyia_prompts/configurable/${assistant_type}-system.md" ]]; then
         final_prompt+="$(cat "$nyia_prompts/configurable/${assistant_type}-system.md")"$'\n\n'
     fi
-    
+
     # 5. User global assistant overrides
     if [[ -f "$user_prompts/${assistant_type}-overrides.md" ]]; then
         final_prompt+="# User ${assistant_type} Customizations"$'\n'
         final_prompt+="$(cat "$user_prompts/${assistant_type}-overrides.md")"$'\n\n'
     fi
-    
-    # 6. Project global overrides
-    if [[ -f "$project_prompts/project-overrides.md" ]]; then
+
+    # 5b. Team prompts (between user and project — project is closer to code, wins via ordering)
+    local team_dir
+    team_dir=$(resolve_team_dir)
+    if [[ -n "$team_dir" ]]; then
+        local team_prompts="$team_dir/prompts"
+        if [[ -f "$team_prompts/project-overrides.md" ]]; then
+            final_prompt+="# Team Global Overrides"$'\n'
+            final_prompt+="$(cat "$team_prompts/project-overrides.md")"$'\n\n'
+        fi
+        if [[ -f "$team_prompts/${assistant_type}-project.md" ]]; then
+            final_prompt+="# Team ${assistant_type} Specific"$'\n'
+            final_prompt+="$(cat "$team_prompts/${assistant_type}-project.md")"$'\n\n'
+        fi
+    fi
+
+    # 6. Project global overrides (shared path first, legacy fallback)
+    if [[ -f "$shared_prompts/project-overrides.md" ]]; then
+        final_prompt+="# Project Global Overrides"$'\n'
+        final_prompt+="$(cat "$shared_prompts/project-overrides.md")"$'\n\n'
+    elif [[ -f "$project_prompts/project-overrides.md" ]]; then
         final_prompt+="# Project Global Overrides"$'\n'
         final_prompt+="$(cat "$project_prompts/project-overrides.md")"$'\n\n'
     fi
-    
-    # 7. Project assistant-specific
-    if [[ -f "$project_prompts/${assistant_type}-project.md" ]]; then
+
+    # 7. Project assistant-specific (shared path first, legacy fallback)
+    if [[ -f "$shared_prompts/${assistant_type}-project.md" ]]; then
+        final_prompt+="# Project ${assistant_type} Specific"$'\n'
+        final_prompt+="$(cat "$shared_prompts/${assistant_type}-project.md")"$'\n\n'
+    elif [[ -f "$project_prompts/${assistant_type}-project.md" ]]; then
         final_prompt+="# Project ${assistant_type} Specific"$'\n'
         final_prompt+="$(cat "$project_prompts/${assistant_type}-project.md")"$'\n\n'
     fi
@@ -1574,9 +1920,13 @@ check_docker_image() {
 # Returns docker -e arguments for all exported variables
 get_creds_env_args() {
     local project_path="${1:-$(pwd)}"
-    local creds_file="$project_path/.nyiakeeper/creds/env"
+    # Check private path first, fall back to legacy path
+    local creds_file="$project_path/.nyiakeeper/private/creds/env"
+    if [[ ! -f "$creds_file" ]]; then
+        creds_file="$project_path/.nyiakeeper/creds/env"
+    fi
     local env_args=()
-    
+
     if [[ -f "$creds_file" ]]; then
         print_verbose "Loading environment variables from $creds_file"
         
@@ -1637,8 +1987,11 @@ create_docker_env_file() {
     
     print_verbose "Creating Docker environment file (secure): $env_file"
     
-    # Add credentials from .nyiakeeper/creds/env file
-    local creds_file="$project_path/.nyiakeeper/creds/env"
+    # Add credentials from creds/env file (private path first, legacy fallback)
+    local creds_file="$project_path/.nyiakeeper/private/creds/env"
+    if [[ ! -f "$creds_file" ]]; then
+        creds_file="$project_path/.nyiakeeper/creds/env"
+    fi
     if [[ -f "$creds_file" ]]; then
         print_verbose "Loading credentials from $creds_file"
         # Extract just the VAR=value part from -e VAR=value arguments
@@ -1705,12 +2058,18 @@ EOF
         print_verbose "Config file not found: $config_file"
     fi
     
-    # Remove duplicates (keep last occurrence)
+    # Deduplicate env vars: keep last occurrence of each key, preserve original order
+    # Uses only POSIX awk features (no GNU tac) for macOS/BSD compatibility
     local temp_sorted=$(mktemp)
-    chmod 640 "$temp_sorted"  # Set same permissions on temp file
-    tac "$env_file" | awk -F= '!seen[$1]++' | tac > "$temp_sorted"
-    mv "$temp_sorted" "$env_file"
-    chmod 640 "$env_file"  # Ensure permissions are preserved after move
+    chmod 640 "$temp_sorted"
+    awk -F= '{key=$1; lines[NR]=$0; keys[NR]=key; last[key]=NR} END{for(i=1;i<=NR;i++) if(last[keys[i]]==i) print lines[i]}' "$env_file" > "$temp_sorted"
+    if [[ $? -eq 0 && -s "$temp_sorted" ]]; then
+        mv "$temp_sorted" "$env_file"
+        chmod 640 "$env_file"
+    else
+        print_verbose "Warning: env dedup failed, keeping original env file"
+        rm -f "$temp_sorted"
+    fi
     
     if [[ "${NYIA_DEBUG:-false}" == "true" ]]; then
         print_verbose "Environment file contents:"
@@ -1947,6 +2306,7 @@ run_debug_shell() {
     if [[ "$WORKSPACE_MODE" == "true" ]]; then
         docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
         docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
+        docker_env_args+=(-e NYIA_WORKSPACE_MODES="$(printf '%s\n' "${WORKSPACE_REPO_MODES[@]}")")
     fi
 
     # Create environment file for Docker
@@ -2137,11 +2497,6 @@ run_docker_container() {
         docker_env_args+=(-e NYIA_WORK_BRANCH="${NYIA_WORK_BRANCH}")
     fi
 
-    # Pass current-branch mode to container (skip cleanup trap) - Plan 134
-    if [[ "${NYIA_CURRENT_BRANCH_MODE:-}" == "true" ]]; then
-        docker_env_args+=(-e NYIA_CURRENT_BRANCH_MODE="true")
-    fi
-
     # Pass RAG settings to container (Plan 66 - Opt-in RAG)
     if [[ -n "${ENABLE_RAG:-}" ]]; then
         docker_env_args+=(-e ENABLE_RAG="${ENABLE_RAG}")
@@ -2154,6 +2509,7 @@ run_docker_container() {
     if [[ "$WORKSPACE_MODE" == "true" ]]; then
         docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
         docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
+        docker_env_args+=(-e NYIA_WORKSPACE_MODES="$(printf '%s\n' "${WORKSPACE_REPO_MODES[@]}")")
     fi
 
     # Create environment file for Docker
@@ -2347,6 +2703,14 @@ login_assistant() {
     # Propagate user skills and agents from central directory to assistant config
     propagate_user_skills "$assistant_cli" "$nyia_home"
     propagate_user_agents "$assistant_cli" "$nyia_home"
+
+    # Propagate team skills and agents (team < user — user copies first, wins via no-clobber)
+    local team_dir
+    team_dir=$(resolve_team_dir)
+    if [[ -n "$team_dir" ]]; then
+        propagate_team_skills "$assistant_cli" "$team_dir" "$nyia_home"
+        propagate_team_agents "$assistant_cli" "$team_dir" "$nyia_home"
+    fi
 
     # Source provider-specific hooks if they exist (ensure functions are available)
     local provider_hooks_file="$dockerfile_path/${assistant_cli}-hooks.sh"
@@ -2821,9 +3185,21 @@ run_assistant() {
     propagate_user_skills "$assistant_cli" "$nyiakeeper_home"
     propagate_user_agents "$assistant_cli" "$nyiakeeper_home"
 
+    # Propagate team skills and agents (team < user — user copies first, wins via no-clobber)
+    local team_dir
+    team_dir=$(resolve_team_dir)
+    if [[ -n "$team_dir" ]]; then
+        propagate_team_skills "$assistant_cli" "$team_dir" "$nyiakeeper_home"
+        propagate_team_agents "$assistant_cli" "$team_dir" "$nyiakeeper_home"
+    fi
+
+    # Propagate project-shared skills and agents to assistant project dir
+    propagate_shared_skills "$assistant_cli" "$project_path"
+    propagate_shared_agents "$assistant_cli" "$project_path"
+
     # Get prompt filename for this assistant
     local prompt_filename=$(get_prompt_filename "$assistant_cli")
-    
+
     # Check git exclusions on first run
     check_git_exclusions "$project_path" "$prompt_filename"
     
@@ -2975,70 +3351,88 @@ run_assistant() {
 
     # Handle branch creation/switching before running container
     if [[ "$shell_mode" != "true" ]]; then
-        # --current-branch is not compatible with workspace mode (Plan 134)
-        if [[ "${CURRENT_BRANCH_MODE:-false}" == "true" && "${WORKSPACE_MODE:-false}" == "true" ]]; then
-            print_error "--current-branch is not compatible with workspace mode"
-            print_info "Workspace mode requires branch synchronization across repos."
-            print_info "Use --work-branch <name> instead."
-            exit 1
+
+        # Resolve workspace sync config: workspace.conf directive > global config > default (false)
+        local _ws_sync_enabled="false"
+        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
+            if declare -f _resolve_workspace_sync_config >/dev/null 2>&1; then
+                local _ws_sync_result
+                _ws_sync_result=$(_resolve_workspace_sync_config "$project_path")
+                _ws_sync_enabled="${_ws_sync_result%%	*}"
+            fi
         fi
 
-        # --current-branch mode: validate current branch, skip branch creation (Plan 134)
-        if [[ "${CURRENT_BRANCH_MODE:-false}" == "true" ]]; then
-            local current=$(get_current_branch "$project_path")
-            # Reject detached HEAD
+        # Only prepare rollback bookkeeping when sync is enabled (Plan 185)
+        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]] && [[ "$_ws_sync_enabled" == "true" ]]; then
+            capture_original_branches "$project_path"
+
+            # Check if the target work branch exists BEFORE branch operations
+            local target_branch="${work_branch:-}"
+            if [[ -n "$target_branch" ]]; then
+                if git -C "$project_path" branch --list "$target_branch" 2>/dev/null | grep -q .; then
+                    export MAIN_BRANCH_PRE_EXISTED=true
+                else
+                    export MAIN_BRANCH_PRE_EXISTED=false
+                fi
+            elif [[ "${NYIA_AUTO_BRANCH:-false}" == "true" ]]; then
+                # Auto-generated branch will be new
+                export MAIN_BRANCH_PRE_EXISTED=false
+            else
+                # Working on current branch — it always pre-exists
+                export MAIN_BRANCH_PRE_EXISTED=true
+            fi
+        fi
+
+        # Branch strategy: --work-branch > NYIA_AUTO_BRANCH > current branch (default)
+        if [[ -n "$work_branch" ]]; then
+            # Explicit --work-branch: switch/create as before
+            if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
+                print_error "Failed to create or switch to branch"
+                exit 1
+            fi
+        elif [[ "${NYIA_AUTO_BRANCH:-false}" == "true" ]]; then
+            # Config-based auto-branch: old timestamped behavior
+            if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "" "${CREATE_BRANCH:-false}"; then
+                print_error "Failed to create or switch to branch"
+                exit 1
+            fi
+        else
+            # Default: work on current branch
+            local current
+            current=$(get_current_branch "$project_path")
             if [[ -z "$current" || "$current" == "HEAD" || "$current" == "no-git" ]]; then
-                print_error "Cannot use --current-branch in detached HEAD state"
+                print_error "Cannot work in detached HEAD state"
                 print_info "Checkout a branch first: git checkout <branch-name>"
                 exit 1
             fi
-            # Reuse existing branch validation (protected branch + format check)
-            if ! validate_work_branch "$current" "$project_path"; then
-                exit 1
-            fi
-            print_info "Working on current branch: $current (--current-branch mode)"
-            export NYIA_WORK_BRANCH="$current"
-            export NYIA_CURRENT_BRANCH_MODE="true"
-        else
-
-        # Capture original branches BEFORE any branch operations (for rollback in workspace mode)
-        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
-            capture_original_branches "$project_path"
-
-            # Check if the target work branch exists BEFORE create_assistant_branch
-            # This tells us if we're creating a new branch or switching to existing
-            local target_branch="${work_branch:-}"
-            if [[ -z "$target_branch" ]]; then
-                # Auto-generated branch will be new
-                export MAIN_BRANCH_PRE_EXISTED=false
-            elif git -C "$project_path" branch --list "$target_branch" 2>/dev/null | grep -q .; then
-                # Explicit branch exists - we'll switch to it
-                export MAIN_BRANCH_PRE_EXISTED=true
+            # Protected branch guard
+            if is_protected_branch "$current" "$project_path"; then
+                prompt_branch_on_protected "$assistant_name" "$current" "$project_path"
             else
-                # Explicit branch doesn't exist - we'll create it
-                export MAIN_BRANCH_PRE_EXISTED=false
+                print_info "Working on current branch: $current"
+                export NYIA_WORK_BRANCH="$current"
             fi
         fi
 
-        # Create or switch to appropriate branch (skip for shell mode)
-        # Pass CREATE_BRANCH (5th param) for --create flag support
-        if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
-            print_error "Failed to create or switch to branch"
-            exit 1
-        fi
-        # Capture the current branch after branch creation/switching for container
-        local current_work_branch=$(get_current_branch "$project_path")
+        # Capture the current branch after branch operations for container
+        local current_work_branch
+        current_work_branch=$(get_current_branch "$project_path")
         export NYIA_WORK_BRANCH="$current_work_branch"
 
-        # Sync branch to workspace repos (if in workspace mode) - Plan 103
+        # Workspace branch handling (Plan 185: warn by default, sync when enabled)
         if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
-            if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
-                print_error "Failed to sync branches across workspace repositories"
-                exit 1
+            if [[ "$_ws_sync_enabled" == "true" ]]; then
+                # Sync mode: force-sync branches (existing behavior)
+                if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
+                    print_error "Failed to sync branches across workspace repositories"
+                    exit 1
+                fi
+            else
+                # Warn mode (default): check for mismatches, don't sync
+                warn_workspace_branch_mismatch "$current_work_branch"
             fi
         fi
 
-        fi  # end CURRENT_BRANCH_MODE check
     fi
 
     if [[ "$shell_mode" == "true" ]]; then
@@ -3065,33 +3459,113 @@ run_assistant() {
 # === INTELLIGENT BRANCH MANAGEMENT ===
 
 # Get list of protected branches that should never be used as work branches
+# Hardcoded minimum (main, master) + additive config (global + project) + dynamic detection
 get_protected_branches() {
-    local protected_branches=()
-    
-    # Always protect main and master
-    protected_branches+=("main" "master")
-    
-    # Detect default branch from git
+    local project_path="${1:-.}"
+    local -a protected_branches=()
+
+    # 1. Hardcoded minimum (cannot be removed)
+    protected_branches=("main" "master")
+
+    # 2. Read NYIA_PROTECTED_BRANCHES from both config files directly
+    #    (bypasses standard precedence override — we want union, not override)
+    local global_conf="${NYIA_CONFIG_HOME:-${HOME}/.config/nyiakeeper/config}/nyia.conf"
+    local project_conf="${project_path}/.nyiakeeper/nyia.conf"
+    local config_value
+    for conf_file in "$global_conf" "$project_conf"; do
+        if [[ -f "$conf_file" ]]; then
+            config_value=$(grep -E '^NYIA_PROTECTED_BRANCHES=' "$conf_file" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | sed 's/#.*//')
+            if [[ -n "$config_value" ]]; then
+                IFS=',' read -ra extra_branches <<< "$config_value"
+                # Trim whitespace from each branch name
+                for i in "${!extra_branches[@]}"; do
+                    extra_branches[$i]=$(echo "${extra_branches[$i]}" | xargs)
+                done
+                protected_branches+=("${extra_branches[@]}")
+            fi
+        fi
+    done
+
+    # 3. Dynamic: git default branch
     local default_branch
-    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || true)
-    if [[ -n "$default_branch" ]]; then
-        protected_branches+=("$default_branch")
+    default_branch=$(git -C "$project_path" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    [[ -n "$default_branch" ]] && protected_branches+=("$default_branch")
+
+    # 4. Dynamic: GitHub API protected branches (if gh available)
+    if command -v gh &>/dev/null; then
+        local gh_protected
+        gh_protected=$(gh api repos/:owner/:repo/branches --jq '.[] | select(.protected==true) | .name' 2>/dev/null || true)
+        while IFS= read -r branch; do
+            [[ -n "$branch" ]] && protected_branches+=("$branch")
+        done <<< "$gh_protected"
     fi
-    
-    # Try to get GitHub protected branches via gh CLI (optional)
-    if command -v gh >/dev/null 2>&1; then
-        local github_protected
-        github_protected=$(gh api repos/:owner/:repo/branches --jq '.[] | select(.protected==true) | .name' 2>/dev/null || true)
-        if [[ -n "$github_protected" ]]; then
-            # Add each protected branch
-            while IFS= read -r branch; do
-                [[ -n "$branch" ]] && protected_branches+=("$branch")
-            done <<< "$github_protected"
+
+    # Deduplicate and output
+    printf '%s\n' "${protected_branches[@]}" | sort -u | grep -v '^$'
+}
+
+# Check if a branch is protected (hardcoded + config + dynamic)
+is_protected_branch() {
+    local branch="$1"
+    local project_path="${2:-.}"
+    get_protected_branches "$project_path" | grep -qx "$branch"
+}
+
+# Resolve the branch name to switch to when on a protected branch.
+# Pure logic, no TTY dependency — unit-testable.
+resolve_branch_on_protected() {
+    local assistant_name="$1"
+    local user_input="$2"
+    local default_name="${assistant_name}-$(date +%Y-%m-%d-%H%M%S)"
+    echo "${user_input:-$default_name}"
+}
+
+# Switch to or create a branch. Returns 0 on success, 1 on failure.
+switch_to_branch() {
+    local branch_name="$1"
+    local project_path="$2"
+    if ! git -C "$project_path" checkout -b "$branch_name" 2>/dev/null; then
+        if ! git -C "$project_path" checkout "$branch_name" 2>/dev/null; then
+            return 1
         fi
     fi
-    
-    # Remove duplicates and sort
-    printf '%s\n' "${protected_branches[@]}" | sort -u | grep -v '^$'
+    return 0
+}
+
+# Prompt user for a branch name when on a protected branch.
+# Interactive: reads from TTY, validates against protected list, switches.
+# Non-interactive: prints error with suggested command, exits 1.
+prompt_branch_on_protected() {
+    local assistant_name="$1"
+    local current_branch="$2"
+    local project_path="$3"
+
+    print_warning "You're on protected branch '$current_branch'."
+
+    if [[ -t 0 ]]; then
+        local user_input default_name
+        default_name=$(resolve_branch_on_protected "$assistant_name" "")
+        read -r -p "Branch name [$default_name]: " user_input
+        local branch_name
+        branch_name=$(resolve_branch_on_protected "$assistant_name" "$user_input")
+        # Validate the chosen branch is not itself protected
+        if is_protected_branch "$branch_name" "$project_path"; then
+            print_error "Branch '$branch_name' is also protected. Choose a non-protected branch."
+            exit 1
+        fi
+        if ! switch_to_branch "$branch_name" "$project_path"; then
+            print_error "Cannot create or switch to branch '$branch_name'"
+            exit 1
+        fi
+        print_info "Switched to branch: $branch_name"
+        export NYIA_WORK_BRANCH="$branch_name"
+    else
+        local default_name
+        default_name=$(resolve_branch_on_protected "$assistant_name" "")
+        print_error "On protected branch '$current_branch' (non-interactive mode)"
+        print_fix "Use: nyia-${assistant_name} --work-branch $default_name --create"
+        exit 1
+    fi
 }
 
 # Validate a work branch name for security and policy
@@ -3108,7 +3582,7 @@ validate_work_branch() {
 
     # Get list of protected branches
     local protected_branches
-    protected_branches=$(cd "$project_path" && get_protected_branches 2>/dev/null)
+    protected_branches=$(get_protected_branches "$project_path" 2>/dev/null)
     
     # Check if branch is protected
     while IFS= read -r protected_branch; do
@@ -3310,6 +3784,46 @@ create_assistant_branch() {
 
 # === WORKSPACE BRANCH SYNCHRONIZATION (Plan 103) ===
 
+# Warn about RW workspace repos on different branches than the work branch.
+# Only prints if at least one RW repo differs. Returns 0 always (never fails).
+# Arguments:
+#   $1 - work branch name
+# Globals Read:
+#   WORKSPACE_REPOS - array of workspace repo paths
+#   WORKSPACE_REPO_MODES - array of access modes (ro/rw)
+warn_workspace_branch_mismatch() {
+    local work_branch="$1"
+    local mismatches=()
+
+    local i
+    for ((i=0; i<${#WORKSPACE_REPOS[@]}; i++)); do
+        local repo="${WORKSPACE_REPOS[i]}"
+        local mode="${WORKSPACE_REPO_MODES[i]:-rw}"
+
+        # Skip RO repos
+        [[ "$mode" == "ro" ]] && continue
+
+        # Get current branch
+        local repo_branch
+        repo_branch=$(get_current_branch "$repo" 2>/dev/null) || continue
+
+        if [[ "$repo_branch" != "$work_branch" ]]; then
+            mismatches+=("  $(basename "$repo") ($repo): $repo_branch")
+        fi
+    done
+
+    if [[ ${#mismatches[@]} -gt 0 ]]; then
+        print_warning "Workspace repos on different branches than '$work_branch':"
+        local m
+        for m in "${mismatches[@]}"; do
+            echo "$m" >&2
+        done
+        print_info "To auto-sync branches, set workspace_sync=true in config or workspace.conf"
+    fi
+
+    return 0
+}
+
 # Captures current branch for main project and all workspace repos
 # Sets global associative array: ORIGINAL_BRANCHES[repo_path]=branch_name
 # Arguments:
@@ -3331,8 +3845,15 @@ capture_original_branches() {
     ORIGINAL_BRANCHES["$main_project"]=$(get_current_branch "$main_project")
     print_verbose "Captured original branch for main: ${ORIGINAL_BRANCHES[$main_project]}"
 
-    # Capture each workspace repo
-    for repo in "${WORKSPACE_REPOS[@]}"; do
+    # Capture each workspace repo (skip RO repos — they don't get branch operations)
+    local i
+    for ((i=0; i<${#WORKSPACE_REPOS[@]}; i++)); do
+        local repo="${WORKSPACE_REPOS[i]}"
+        local mode="${WORKSPACE_REPO_MODES[i]:-rw}"
+        if [[ "$mode" == "ro" ]]; then
+            print_verbose "Skipping branch capture for RO repo: $repo"
+            continue
+        fi
         ORIGINAL_BRANCHES["$repo"]=$(get_current_branch "$repo")
         print_verbose "Captured original branch for $repo: ${ORIGINAL_BRANCHES[$repo]}"
     done
@@ -3448,8 +3969,15 @@ sync_workspace_branches() {
         print_verbose "Main project branch was created, will delete on rollback"
     fi
 
-    # Step 3: Create/switch branch on each workspace repo
-    for repo in "${WORKSPACE_REPOS[@]}"; do
+    # Step 3: Create/switch branch on each RW workspace repo (skip RO)
+    local ri
+    for ((ri=0; ri<${#WORKSPACE_REPOS[@]}; ri++)); do
+        local repo="${WORKSPACE_REPOS[ri]}"
+        local repo_mode="${WORKSPACE_REPO_MODES[ri]:-rw}"
+        if [[ "$repo_mode" == "ro" ]]; then
+            print_verbose "Skipping branch sync for RO repo: $repo"
+            continue
+        fi
         print_verbose "Creating branch on workspace repo: $repo"
 
         if ! cd "$repo" 2>/dev/null; then

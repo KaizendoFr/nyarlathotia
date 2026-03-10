@@ -4,8 +4,10 @@
 # Cache utilities for exclusions system
 # Provides caching functionality to speed up repeated exclusion scans
 
-# Short cache TTL for active development (30 seconds)
-CACHE_TTL="${NYIA_CACHE_TTL:-30}"
+# Cache TTL — bounded compromise between performance and freshness.
+# Current invalidation only tracks exclusions.conf mtime, NOT new files on disk,
+# so large values risk missing newly created sensitive files. Override with NYIA_CACHE_TTL.
+CACHE_TTL="${NYIA_CACHE_TTL:-60}"
 
 # Get exclusions config modification time
 get_exclusions_config_mtime() {

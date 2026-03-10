@@ -8,10 +8,10 @@ Workspace mode allows a single Nyia Keeper session to work across multiple relat
 ```bash
 mkdir -p .nyiakeeper
 cat > .nyiakeeper/workspace.conf << 'EOF'
-# Paths to additional repositories (one per line)
-~/projects/shared-library
-~/projects/api-client
-/absolute/path/to/another-repo
+# Paths to additional repositories: <path> <ro|rw>
+~/projects/shared-library        rw
+~/projects/api-client            rw
+/data/reference-docs             ro
 EOF
 ```
 
@@ -22,20 +22,51 @@ nyia-claude
 
 ## Configuration File Format
 
-The `.nyiakeeper/workspace.conf` file uses a simple line-based format:
+The `.nyiakeeper/workspace.conf` file uses a simple line-based format. Each line has a **path** followed by a mandatory **access mode** (`ro` or `rw`):
 
 ```
 # Comments start with #
-~/projects/repo1          # Tilde expansion supported
-/absolute/path/to/repo2   # Absolute paths work
-../relative/repo3         # Relative paths work (resolved from workspace root)
+
+# Directives (optional, key=value format)
+sync_branches=true
+
+# Repository entries: <path> <ro|rw>
+~/projects/repo1                  rw    # Read-write — full git guards
+~/projects/api-specs              ro    # Read-only — no git needed
+/absolute/path/to/docs            ro    # Non-git dir OK for ro
+"~/projects/path with spaces"     rw    # Quoted paths supported
 
 # Empty lines are ignored
 ```
 
-### Requirements for Listed Repositories
+### Access Modes
+
+| Mode | Mount | Git Required? | Branch Sync? | Use For |
+|------|-------|---------------|--------------|---------|
+| `rw` | Read-write | Yes (must be git repo) | When enabled | Repos you edit |
+| `ro` | Read-only | No | No | Reference material, docs, specs |
+
+### Directives
+Directives use `key=value` format and control workspace behavior:
+
+| Directive | Values | Default | Effect |
+|-----------|--------|---------|--------|
+| `sync_branches` | `true` / `false` | `false` | Auto-sync RW repo branches to work branch |
+
+Directives can appear anywhere in the file (before, after, or between repo entries).
+
+### Parsing Rules
+- **Unquoted paths**: last whitespace-delimited token is the mode; everything before it is the path
+- **Quoted paths**: wrap the path in `"double quotes"`, mode follows after the closing quote
+- **Directives**: `key=value` lines (only known directives like `sync_branches=` are intercepted)
+- Mode is case-insensitive (`RO`, `ro`, `Ro` all work)
+- Inline comments are NOT supported — use comment-only lines instead
+- Old-format lines (path only, no `ro`/`rw`) produce a clear error
+
+### Requirements
 - Each path must be a valid directory
-- Each directory must be a git repository (contains `.git/`)
+- **RW repos** must be git repositories (contains `.git/`)
+- **RO repos** just need to exist (git not required)
 - The workspace cannot list itself (self-reference check)
 - Symlinks are automatically resolved to canonical paths
 
@@ -47,9 +78,9 @@ When workspace mode is active:
 ```
 /project/{workspace-hash}/           # Main workspace (your current directory)
 /project/{workspace-hash}/repos/     # Additional repositories
-    ├── shared-library-a1b2c3d4/     # Repo 1 (with hash suffix)
-    ├── api-client-e5f6g7h8/         # Repo 2 (with hash suffix)
-    └── another-repo-i9j0k1l2/       # Repo 3 (with hash suffix)
+    ├── shared-library-a1b2c3d4/     # RW repo (with hash suffix, :rw mount)
+    ├── api-client-e5f6g7h8/         # RW repo (with hash suffix, :rw mount)
+    └── reference-docs-i9j0k1l2/     # RO repo (with hash suffix, :ro mount)
 ```
 
 The hash suffix prevents collisions when multiple repos have the same basename.
@@ -59,7 +90,7 @@ The hash suffix prevents collisions when multiple repos have the same basename.
 Branch names follow the standard format: `{assistant}-{timestamp}`
 - Example: `claude-2025-01-15-143025`
 
-The same branch name is used across all repositories in the workspace, making it easy to identify related work.
+The same branch name is used across all **RW** repositories in the workspace. RO repos are not touched.
 
 ### Exclusions
 
@@ -70,7 +101,18 @@ repo2/.nyiakeeper/exclusions.conf   # Applied to repo2 mount
 workspace/.nyiakeeper/exclusions.conf  # Applied to main workspace
 ```
 
-Built-in security exclusions (`.env`, `.key`, `.pem`, etc.) are applied to all mounts.
+Built-in security exclusions (`.env`, `.key`, `.pem`, etc.) are applied to all mounts (both RO and RW).
+
+## RO vs RW Behavior Summary
+
+| Operation | RW repo | RO repo |
+|-----------|---------|---------|
+| Must be git repo | Yes | No |
+| Docker mount mode | `:rw` | `:ro` |
+| Branch sync | Yes | Skipped |
+| Branch rollback | Yes | Skipped |
+| Uncommitted changes check | Yes | Skipped |
+| Exclusions applied | Yes | Yes |
 
 ## Limitations
 
@@ -83,25 +125,56 @@ Warning: RAG disabled in workspace mode (multi-repo indexing not yet supported)
 
 ### Git Operations
 - Git operations in the container target the main workspace only
-- Each additional repo maintains its own git state
+- Each additional RW repo maintains its own git state
 - Commits made by the assistant go to the workspace repo
 
 ### Branch Synchronization
-When you start a workspace session, Nyia Keeper:
-1. Captures the current branch of all repositories (main + workspace repos)
-2. Creates the work branch on the main project (e.g., `claude-2025-01-15-143025`)
-3. **Automatically creates the same branch on ALL workspace repositories**
 
-This ensures all repos in your workspace are on the same branch, making coordinated work easier.
+By default, Nyia Keeper **warns** when RW workspace repos are on different branches but does **not** automatically sync them. This lets you intentionally work with repos on different branches.
 
-#### Atomic Rollback
-If branch creation fails on any repository:
-- All repositories are rolled back to their original branches
+#### Default Behavior (Warn Only)
+When you start a workspace session, Nyia Keeper checks all RW repos. If any are on a different branch than the work branch, you'll see:
+```
+Warning: Workspace repos on different branches than 'feature/my-feature':
+  shared-library (/home/user/projects/shared-library): main
+  api-client (/home/user/projects/api-client): develop
+To auto-sync branches, set workspace_sync=true in config or workspace.conf
+```
+No branches are changed. RO repos are always skipped.
+
+#### Enabling Auto-Sync
+
+To have Nyia Keeper automatically create/switch branches on all RW repos:
+
+**Per-workspace** — add a directive to `workspace.conf`:
+```
+sync_branches=true
+
+~/projects/shared-library     rw
+~/projects/api-client         rw
+```
+
+**Globally** — set the config key:
+```bash
+nyia config global workspace_sync=true
+```
+
+Precedence: `workspace.conf` directive > global config > default (`false`).
+
+To disable sync for a specific workspace even when global is true:
+```
+sync_branches=false
+~/projects/repo rw
+```
+
+#### Atomic Rollback (Sync Mode Only)
+When sync is enabled, if branch creation fails on any RW repository:
+- All RW repositories are rolled back to their original branches
 - The work branch is deleted from any repos where it was created
 - You'll see an error message indicating which repo failed and why
 
 Common failure reasons:
-- Uncommitted changes in a workspace repo (commit or stash first)
+- Uncommitted changes in an RW workspace repo (commit or stash first)
 - Inaccessible repository path
 - Branch already exists with conflicts
 
@@ -110,7 +183,7 @@ Use `--work-branch` to specify the branch name:
 ```bash
 nyia-claude --work-branch feature/my-feature
 ```
-This branch will be created on ALL repos in the workspace.
+When sync is enabled, this branch will be created on all RW repos. When sync is disabled (default), you'll get a warning if repos differ. RO repos are always unaffected.
 
 ## Status Display
 
@@ -120,10 +193,8 @@ Git Status
   Branch: claude-2025-01-15-143025
   Commits: 42
   Changes: Clean working directory
-  Mode: Workspace (3 additional repos - all synced to same branch)
+  Mode: Workspace (3 repos: 2 rw, 1 ro)
 ```
-
-The "all synced to same branch" indicator confirms that branch synchronization completed successfully for all workspace repositories.
 
 ## Use Cases
 
@@ -131,35 +202,47 @@ The "all synced to same branch" indicator confirms that branch synchronization c
 Work on related packages without a monorepo structure:
 ```
 # workspace.conf
-~/packages/ui-components
-~/packages/api-client
-~/packages/shared-types
+~/packages/ui-components     rw
+~/packages/api-client        rw
+~/packages/shared-types      rw
 ```
 
 ### Cross-Project Refactoring
 Make coordinated changes across multiple projects:
 ```
 # workspace.conf
-~/services/auth-service
-~/services/user-service
-~/libs/common-utils
+~/services/auth-service      rw
+~/services/user-service      rw
+~/libs/common-utils          rw
 ```
 
-### Documentation with Code
-Keep docs and code together:
+### Code + Reference Documentation
+Edit code while referencing read-only docs/specs:
 ```
 # workspace.conf
-~/company-wiki
-~/api-documentation
+~/api-specs                  ro
+~/company-wiki               ro
+~/shared-types               ro
+```
+
+### Mixed: Editable + Reference
+```
+# workspace.conf
+~/services/my-service        rw    # This is what I'm working on
+~/services/upstream-api      ro    # Just for reference
+~/docs/architecture          ro    # Read-only architecture docs
 ```
 
 ## Troubleshooting
+
+### "Missing access mode (ro/rw) for: ..."
+Your `workspace.conf` uses the old format (path only). Add `ro` or `rw` at the end of each line.
 
 ### "Workspace repo not found"
 The specified path doesn't exist. Check the path in `workspace.conf`.
 
 ### "Workspace repo is not a git repository"
-The directory exists but isn't a git repo. Run `git init` in that directory.
+An RW directory exists but isn't a git repo. Either run `git init` or change it to `ro`.
 
 ### "Workspace cannot include itself"
 Remove the current directory from `workspace.conf` - it's already the main workspace.
@@ -173,17 +256,18 @@ If you have multiple repos named `app/`:
 The hash suffix ensures unique container paths.
 
 ### "Failed to sync branches across workspace repositories"
-Branch synchronization failed. Common causes:
+Branch synchronization failed on an RW repo. Common causes:
 - **Uncommitted changes**: Commit or stash changes in the failing repo
 - **Inaccessible repo**: Check the path exists and is readable
 - **Permission issues**: Ensure you have write access to create branches
 
-All repos will be rolled back to their original branches when this happens.
+All RW repos will be rolled back to their original branches when this happens. RO repos are never affected.
 
 ## Best Practices
 
 1. **Keep workspace.conf in version control** - Share the workspace setup with your team
 2. **Use absolute or home-relative paths** - More reliable than relative paths
-3. **Group related repos only** - Don't include unrelated projects
-4. **Consider security** - Excluded files in one repo don't affect another
-5. **Document the workspace** - Add comments explaining why each repo is included
+3. **Mark reference repos as `ro`** - Prevents accidental writes, skips git overhead
+4. **Group related repos only** - Don't include unrelated projects
+5. **Consider security** - Excluded files in one repo don't affect another
+6. **Document the workspace** - Add comments explaining why each repo is included
