@@ -725,6 +725,12 @@ check_for_updates_if_due() {
         return 0
     fi
 
+    # Ensure NYIAKEEPER_HOME is set — downstream functions (is_update_check_due,
+    # acquire_update_lock) use ${NYIAKEEPER_HOME:?} for cache/lock paths
+    if [[ -z "${NYIAKEEPER_HOME:-}" ]]; then
+        NYIAKEEPER_HOME="$_config_root"
+    fi
+
     # Guard: must be a TTY
     if [[ ! -t 0 ]] && [[ ! -t 1 ]]; then
         return 0

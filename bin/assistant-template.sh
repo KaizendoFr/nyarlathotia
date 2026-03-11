@@ -12,6 +12,11 @@ script_dir="$(dirname "$(realpath "$0")")"
 source "$script_dir/../lib/cli-parser.sh"
 source "$script_dir/common-functions.sh"
 
+# Ensure NYIAKEEPER_HOME is set (wrappers export it, but guard for direct invocation)
+if [[ -z "${NYIAKEEPER_HOME:-}" ]]; then
+    export NYIAKEEPER_HOME=$(get_nyiakeeper_home)
+fi
+
 # Load assistant configuration
 if [[ -z "$ASSISTANT_CONFIG" ]]; then
     print_error "ASSISTANT_CONFIG not set"
