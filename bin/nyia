@@ -311,19 +311,24 @@ case "${1:-help}" in
         clean_old_images
         ;;
     update)
-        # Update to latest or specific version
+        if ! type perform_update &>/dev/null; then
+            echo "Error: Auto-update library not available." >&2
+            exit 1
+        fi
+        shift
+        # --list is info-only, no TTY needed
+        if [[ "${1:-}" == "--list" ]]; then
+            list_available_versions
+            exit $?
+        fi
+        # All other update commands require interactive terminal
         if [[ ! -t 0 ]] && [[ ! -t 1 ]]; then
             echo "Update requires an interactive terminal."
             echo "To update manually, download the latest release from:"
             echo "  https://github.com/KaizendoFr/nyiakeeper/releases"
             exit 1
         fi
-        if ! type perform_update &>/dev/null; then
-            echo "Error: Auto-update library not available." >&2
-            exit 1
-        fi
-        shift
-        perform_update "${1:-}"
+        cli_targeted_update "${1:-}"
         ;;
     rollback)
         # Rollback to previous version
@@ -379,6 +384,7 @@ case "${1:-help}" in
         echo "  nyia clean                  # Clean old Docker images"
         echo "  nyia exclusions [command]   # Manage file exclusions"
         echo "  nyia update [version]       # Update to latest or specific version"
+        echo "  nyia update --list          # List available versions"
         echo "  nyia rollback               # Rollback to previous version"
         echo "  nyia help                   # Show this help"
         echo ""

@@ -752,13 +752,6 @@ get_nyiakeeper_home() {
     # Ensure prompts directory exists
     ensure_prompts_directory "$config_dir"
 
-    # Ensure VERSION file exists (migration for existing installations)
-    local version_file="$config_dir/VERSION"
-    if [[ ! -f "$version_file" ]]; then
-        echo "latest" > "$version_file" 2>/dev/null || true
-        print_verbose "Created VERSION file with default: latest"
-    fi
-
     echo "$config_dir"
     return 0
 }
@@ -1176,21 +1169,32 @@ get_installed_version() {
     if [[ -f "$version_file" ]]; then
         local version=$(cat "$version_file" 2>/dev/null | tr -d '[:space:]' | head -1)
 
-        # Validate version format (v*.*.* or "latest")
-        if [[ -n "$version" && ( "$version" == "latest" || "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ) ]]; then
+        # Validate version format: vX.Y.Z, vX.Y.Z-pre.N, "latest", or "dev"
+        if [[ -n "$version" && ( "$version" == "latest" || "$version" == "dev" || "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ) ]]; then
             print_verbose "Using installed version: $version"
             echo "$version"
             return 0
         else
-            print_verbose "Invalid version in VERSION file: '$version', using latest"
+            print_verbose "Invalid version in VERSION file: '$version'"
         fi
     else
         print_verbose "No VERSION file found at: $version_file"
     fi
 
-    # Priority 3: Fallback to latest
-    print_verbose "Falling back to: latest"
-    echo "latest"
+    # Priority 3: Fallback — check lib dir (migration path for existing installs)
+    local lib_version_file="$HOME/.local/lib/nyiakeeper/VERSION"
+    if [[ -f "$lib_version_file" ]]; then
+        local lib_version=$(cat "$lib_version_file" 2>/dev/null | tr -d '[:space:]' | head -1)
+        if [[ -n "$lib_version" && ( "$lib_version" == "latest" || "$lib_version" == "dev" || "$lib_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ) ]]; then
+            print_verbose "Using version from lib dir fallback: $lib_version"
+            echo "$lib_version"
+            return 0
+        fi
+    fi
+
+    # No version found anywhere — return empty string
+    print_verbose "No valid VERSION file found, returning empty"
+    echo ""
     return 0
 }
 
@@ -1206,9 +1210,9 @@ set_installed_version() {
         return 1
     fi
 
-    # Validate version format
-    if [[ "$version" != "latest" && ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-        print_warning "Unusual version format: $version (expected v*.*.* or 'latest')"
+    # Validate version format: vX.Y.Z, vX.Y.Z-pre.N, "latest", or "dev"
+    if [[ "$version" != "latest" && "$version" != "dev" && ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+        print_warning "Unusual version format: $version (expected vX.Y.Z[-pre.N], 'latest', or 'dev')"
     fi
 
     echo "$version" > "$version_file" || {
@@ -2302,6 +2306,10 @@ run_debug_shell() {
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
     docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
 
+    # Terminal color support — pass host values with safe defaults
+    docker_env_args+=(-e TERM="${TERM:-xterm-256color}")
+    docker_env_args+=(-e COLORTERM="${COLORTERM:-truecolor}")
+
     # Pass workspace mode to container (for RAG disable, exclusions status)
     if [[ "$WORKSPACE_MODE" == "true" ]]; then
         docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
@@ -2474,6 +2482,10 @@ run_docker_container() {
     docker_env_args+=(-e NYIA_ENABLE_SESSION_PERSISTENCE="${NYIA_ENABLE_SESSION_PERSISTENCE:-true}")
     docker_env_args+=(-e NYIA_PROJECT_PATH="$container_path")
     docker_env_args+=(-e NYIA_BUILD_TIMESTAMP="$(date -Iseconds)")
+
+    # Terminal color support — pass host values with safe defaults
+    docker_env_args+=(-e TERM="${TERM:-xterm-256color}")
+    docker_env_args+=(-e COLORTERM="${COLORTERM:-truecolor}")
 
     # Pass agent persona selection to container (Plan 149)
     if [[ -n "${NYIA_AGENT:-}" ]]; then

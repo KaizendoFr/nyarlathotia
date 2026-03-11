@@ -159,11 +159,120 @@ fetch_latest_version() {
     # Empty output on failure (silent fail)
 }
 
+# --- Version Listing ---
+
+list_available_versions() {
+    local response
+    response=$(curl -s --max-time "$UPDATE_CURL_TIMEOUT" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "${GITHUB_API}/releases?per_page=10" 2>/dev/null) || response=""
+
+    if [[ -z "$response" ]]; then
+        echo "Error: Could not fetch releases from GitHub." >&2
+        return 1
+    fi
+
+    # Extract all tag_name values
+    local -a tags=()
+    while IFS= read -r t; do
+        tags+=("$t")
+    done < <(echo "$response" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    if [[ ${#tags[@]} -eq 0 ]]; then
+        echo "No releases found." >&2
+        return 1
+    fi
+
+    # Extract published_at dates
+    local -a dates=()
+    while IFS= read -r d; do
+        dates+=("${d:0:10}")  # keep YYYY-MM-DD only
+    done < <(echo "$response" | grep -o '"published_at"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"published_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    # Get current installed version for marker
+    local current
+    current=$(get_installed_version 2>/dev/null) || current=""
+
+    echo "Available versions (last ${#tags[@]}):"
+    echo ""
+
+    # If date count matches tag count, show dates; otherwise tag-only
+    if [[ ${#dates[@]} -eq ${#tags[@]} ]]; then
+        printf "  %-28s %-14s %s\n" "TAG" "DATE" "STATUS"
+        for i in "${!tags[@]}"; do
+            local marker=""
+            if [[ "${tags[$i]}" == "$current" ]]; then
+                marker="← installed"
+            fi
+            printf "  %-28s %-14s %s\n" "${tags[$i]}" "${dates[$i]}" "$marker"
+        done
+    else
+        printf "  %-28s %s\n" "TAG" "STATUS"
+        for i in "${!tags[@]}"; do
+            local marker=""
+            if [[ "${tags[$i]}" == "$current" ]]; then
+                marker="← installed"
+            fi
+            printf "  %-28s %s\n" "${tags[$i]}" "$marker"
+        done
+    fi
+
+    echo ""
+    echo "To switch: nyia update <version>"
+}
+
+# --- CLI-targeted Update Wrapper ---
+
+cli_targeted_update() {
+    local target_tag="${1:-}"
+
+    local current
+    current=$(get_installed_version 2>/dev/null) || current=""
+
+    if [[ -n "$target_tag" ]]; then
+        # Show confirmation for explicit version targeting
+        local direction="switch"
+        if [[ -n "$current" && "$current" != "latest" && "$current" != "dev" ]]; then
+            if compare_versions "$current" "$target_tag" 2>/dev/null; then
+                direction="upgrade"
+            else
+                direction="downgrade"
+            fi
+            if [[ "$current" == "$target_tag" ]]; then
+                direction="reinstall"
+            fi
+        fi
+
+        echo "Current version: ${current:-unknown}"
+        echo "Target version:  $target_tag ($direction)"
+        echo ""
+
+        local answer
+        read -r -p "Proceed? [y/N] " answer < /dev/tty
+        if [[ ! "$answer" =~ ^[Yy] ]]; then
+            echo "Update cancelled."
+            return 0
+        fi
+    fi
+
+    perform_update "$target_tag"
+}
+
 # --- Version Comparison ---
 
 compare_versions() {
     local v1="$1"  # installed version
     local v2="$2"  # latest version
+
+    # Safety net: reject unparseable versions (same contract as get_installed_version)
+    # Accepted: vX.Y.Z, vX.Y.Z-pre.N. Reject: "latest", "dev", empty, garbage.
+    local _ver_re='^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$'
+    if [[ -z "$v1" || -z "$v2" || "$v1" == "latest" || "$v2" == "latest" || "$v1" == "dev" || "$v2" == "dev" ]]; then
+        return 1  # no update
+    fi
+    if [[ ! "$v1" =~ $_ver_re ]] || [[ ! "$v2" =~ $_ver_re ]]; then
+        return 1  # no update
+    fi
 
     # Strip leading 'v'
     v1="${v1#v}"
@@ -605,9 +714,14 @@ perform_rollback() {
 # --- Main Entry Point ---
 
 check_for_updates_if_due() {
-    # Guard: VERSION file must exist
-    local version_file="${NYIAKEEPER_HOME:-}/VERSION"
-    if [[ -z "${NYIAKEEPER_HOME:-}" ]] || [[ ! -f "$version_file" ]]; then
+    # Guard: VERSION file must exist — resolve config dir without side effects
+    local _config_root="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
+    local version_file="$_config_root/VERSION"
+    # Check config dir first, then lib dir fallback
+    if [[ ! -f "$version_file" ]]; then
+        version_file="$HOME/.local/lib/nyiakeeper/VERSION"
+    fi
+    if [[ ! -f "$version_file" ]]; then
         return 0
     fi
 

@@ -24,7 +24,15 @@ PUBLIC_REPO="KaizendoFr/nyia-keeper"
 TARBALL_NAME="nyiakeeper-runtime.tar.gz"
 MIN_MACOS_VERSION="13"
 # Replaced at build time by preprocess-runtime.sh (same pattern as install.sh)
-RELEASE_TAG="v0.1.0-alpha.57"
+RELEASE_TAG="v0.1.0-alpha.58"
+
+# Version resolution: $1 > $NYIA_VERSION > build-time RELEASE_TAG > "latest"
+if [[ -n "${1:-}" ]]; then
+    RELEASE_TAG="$1"
+    shift
+elif [[ -n "${NYIA_VERSION:-}" ]]; then
+    RELEASE_TAG="$NYIA_VERSION"
+fi
 
 #─────────────────────────────────────────────────────────────
 # Utility functions
@@ -327,7 +335,11 @@ check_existing_install() {
             local current_version
             current_version=$(cat "$INSTALL_DIR/VERSION")
             print_warning "Nyia Keeper $current_version already installed"
-            echo -n "Upgrade to latest? [Y/n]: "
+            local target_label="latest"
+            if [[ "$RELEASE_TAG" != "latest" ]]; then
+                target_label="$RELEASE_TAG"
+            fi
+            echo -n "Install $target_label? [Y/n]: "
             read -r response < /dev/tty
             if [[ "$response" =~ ^[Nn] ]]; then
                 print_info "Installation cancelled"
@@ -349,6 +361,17 @@ check_existing_install() {
 install_nyiakeeper() {
     echo ""
     print_info "Installing Nyia Keeper..."
+
+    # Validate specific version against GitHub API
+    if [[ "$RELEASE_TAG" != "latest" ]]; then
+        print_info "Validating version $RELEASE_TAG..."
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.github.com/repos/$PUBLIC_REPO/releases/tags/$RELEASE_TAG" 2>/dev/null) || http_code="000"
+        if [[ "$http_code" != "200" ]]; then
+            fail "Version $RELEASE_TAG not found. Check available releases at: https://github.com/$PUBLIC_REPO/releases"
+        fi
+    fi
 
     # Build download URL — RELEASE_TAG is patched at build time by preprocess-runtime.sh
     local tarball_url

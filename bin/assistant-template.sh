@@ -182,9 +182,15 @@ main() {
         fi
 
         # Count RO/RW for status display
+        # Note: use $((var + 1)) not ((var++)) — the latter returns exit 1
+        # when var=0 (bash arithmetic: 0 is falsy), which kills set -e scripts
         local rw_count=0 ro_count=0
         for m in "${WORKSPACE_REPO_MODES[@]}"; do
-            [[ "$m" == "rw" ]] && ((rw_count++)) || ((ro_count++))
+            if [[ "$m" == "rw" ]]; then
+                rw_count=$((rw_count + 1))
+            else
+                ro_count=$((ro_count + 1))
+            fi
         done
         print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
     fi

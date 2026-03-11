@@ -10,6 +10,11 @@ The macOS installer handles everything automatically - Docker detection, install
 curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/scripts/install-macos.sh | bash
 ```
 
+To install a specific version:
+```bash
+curl -fsSL https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/scripts/install-macos.sh | bash -s v0.1.0-alpha.47
+```
+
 The installer will:
 1. Check your macOS version (requires 13 Ventura or newer)
 2. Detect if Docker Desktop is installed and running

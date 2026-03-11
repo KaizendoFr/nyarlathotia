@@ -1,0 +1,146 @@
+---
+name: pair-review
+description: Review a plan or respond to a review as a pair-programming architect. Supports round-trip workflows between assistants with human-in-the-loop discussion. Use /pair-review plan <N> to review, /pair-review respond <N> to respond to a review.
+---
+
+# Pair-Review - Architect Review Skill
+
+Supports two modes for round-trip review workflows between assistants.
+
+## A) Argument Parsing
+
+Parse the arguments to determine mode and plan reference:
+
+```
+/pair-review [subcommand] <plan-ref>
+
+subcommand:
+  "plan" or omitted  → PLAN MODE (reviewer writes/updates review)
+  "respond"          → RESPOND MODE (plan author reads review, discusses, updates plan)
+
+plan-ref:
+  Number (e.g., "121")     → find .nyiakeeper/plans/121-*.md (exclude pair-review-* files)
+  File path                → use directly
+```
+
+## B) Load Context (both modes)
+
+1. Resolve plan-ref to an actual plan file. Read it completely.
+2. Find review files matching: `pair-review-*-plan-{N}-*.md` in `.nyiakeeper/plans/`
+3. Determine round number: count `## Round` headers in existing review file. Next = count + 1. No file = Round 1.
+4. Identify yourself (your assistant name) from context or environment.
+
+## C) PLAN MODE — Write or Update Review
+
+You are the **reviewer**. You are reviewing someone else's plan.
+
+### Round 1 (no existing review by you)
+
+Perform a full review with these focus areas:
+
+**System prompt compliance:**
+- Required sections present? (Context, Requirements, Approach, Steps, Testing, Risks)
+- Steps truly atomic? (single action, verifiable outcome, minimal scope)
+
+**Review focus:**
+- KISS / avoid overengineering
+- Security by design
+- Testability and test-aware workflow
+- Risk management and rollback
+
+**Identify:** What's solid, issues/risks (High/Med/Low), missing tests, non-atomic steps.
+
+Discuss findings with the human before writing.
+
+Write to: `.nyiakeeper/plans/pair-review-{me}-for-{target}-plan-{N}-{slug}.md` , do not ask for user approval, write directly.
+
+Use this format:
+```markdown
+# Pair Review: Plan {N} - {title}
+**Reviewer**: {me} | **For**: {target} | **Plan**: {filename}
+
+## Round 1 — {date}
+
+### Review Summary
+[Max 8 lines]
+
+### What's Solid
+- [point 1]
+
+### Issues / Risks (Ranked)
+#### High
+- [critical issue]
+#### Medium
+- [important issue]
+#### Low
+- [minor issue]
+
+### Recommendations
+1. [Fix] - because [reason]
+
+### Test Strategy
+- [What to test]
+
+### Refined Atomic Next Steps
+- [ ] Step 1 (Done when: [condition])
+```
+
+### Round N+1 (review exists, plan was updated since last round)
+
+1. Read your previous review
+2. Read the current plan — compare with your last review to identify what changed
+3. Focus only on changes and unresolved items from previous round
+4. Discuss with human before writing
+
+Append to the existing review file:
+```markdown
+## Round {N+1} — {date}
+
+### Changes Since Round {N}
+- [what changed in the plan]
+
+### Updated Assessment
+- [focused on changes, referencing previous recommendations]
+
+### New/Remaining Issues
+- [any new or unresolved items]
+```
+
+## D) RESPOND MODE — Read Review, Discuss, Update Plan
+
+You are the **plan author**. Someone else reviewed your plan.
+
+### Steps
+
+1. **Find the review**: Look for `pair-review-*-for-{me}-plan-{N}-*.md`
+   - If multiple files match, use most recently modified. If ambiguous, ask the human.
+   - If no review found, inform the human and stop.
+
+2. **Read and present**: Read the review file. Summarize to the human:
+   "{reviewer} raised these points in Round {N}: [list of recommendations]"
+
+3. **Discuss each point**: Walk through recommendations with the human.
+   Let them accept, reject, or modify each one. Free discussion is fine too.
+
+4. **CONFIRMATION GATE** (mandatory — NEVER skip):
+   After discussion, present the agreed changes:
+   "Here are the changes I'll make to the plan:
+   - [change 1]
+   - [change 2]
+   Apply these changes? [yes/no]"
+
+   Wait for explicit "yes" before editing ANY file. If "no", ask what to adjust.
+
+5. **Update the plan**: Only after confirmation, edit the plan file with agreed changes.
+   Add at the bottom of the plan: `## Updates after Round {N} review\n- [summary of changes]`
+
+6. **Guide next step**: Tell the human:
+   "Plan updated. To continue the review cycle, run `/pair-review plan {N}` on {reviewer}'s side."
+
+## E) Key Rules
+
+- **Human-in-the-loop**: ALWAYS discuss before writing in both modes. Never auto-write.
+- **Confirmation gate**: In respond mode, NEVER edit the plan without explicit "yes" from the human.
+- **Backward compatible**: `/pair-review 121` (no subcommand) = plan mode.
+- **Delta = LLM comparison**: Compare plan content vs last review content. No git diff needed.
+- **One review file per pair**: `pair-review-{from}-for-{target}-plan-{N}-{slug}.md`. Rounds append to the same file.
