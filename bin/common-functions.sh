@@ -834,7 +834,7 @@ propagate_user_skills() {
         # No-clobber: skip if target already exists
         if [[ -d "$target_dir/$skill_name" ]]; then
             print_verbose "User skill '$skill_name' already exists at target, skipping"
-            ((skipped++))
+            skipped=$((skipped + 1))
             continue
         fi
 
@@ -842,7 +842,7 @@ propagate_user_skills() {
         mkdir -p "$target_dir"
         cp -r "$skill_dir" "$target_dir/$skill_name"
         print_verbose "Propagated user skill '$skill_name' to $assistant_cli"
-        ((copied++))
+        copied=$((copied + 1))
     done
 
     if [[ $copied -gt 0 ]]; then
@@ -3411,53 +3411,112 @@ run_assistant() {
             fi
         fi
 
-        # Branch strategy: --work-branch > NYIA_AUTO_BRANCH > current branch (default)
-        if [[ -n "$work_branch" ]]; then
-            # Explicit --work-branch: switch/create as before
-            if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
-                print_error "Failed to create or switch to branch"
-                exit 1
-            fi
-        elif [[ "${NYIA_AUTO_BRANCH:-false}" == "true" ]]; then
-            # Config-based auto-branch: old timestamped behavior
-            if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "" "${CREATE_BRANCH:-false}"; then
-                print_error "Failed to create or switch to branch"
-                exit 1
-            fi
-        else
-            # Default: work on current branch
-            local current
-            current=$(get_current_branch "$project_path")
-            if [[ -z "$current" || "$current" == "HEAD" || "$current" == "no-git" ]]; then
-                print_error "Cannot work in detached HEAD state"
-                print_info "Checkout a branch first: git checkout <branch-name>"
-                exit 1
-            fi
-            # Protected branch guard
-            if is_protected_branch "$current" "$project_path"; then
-                prompt_branch_on_protected "$assistant_name" "$current" "$project_path"
-            else
-                print_info "Working on current branch: $current"
-                export NYIA_WORK_BRANCH="$current"
-            fi
-        fi
-
-        # Capture the current branch after branch operations for container
+        # Branch strategy: workspace vs non-workspace
         local current_work_branch
-        current_work_branch=$(get_current_branch "$project_path")
-        export NYIA_WORK_BRANCH="$current_work_branch"
-
-        # Workspace branch handling (Plan 185: warn by default, sync when enabled)
-        if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
-            if [[ "$_ws_sync_enabled" == "true" ]]; then
-                # Sync mode: force-sync branches (existing behavior)
-                if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
-                    print_error "Failed to sync branches across workspace repositories"
+        if [[ "$WORKSPACE_MODE" != "true" ]]; then
+            # --- Non-workspace: --work-branch > NYIA_AUTO_BRANCH > current branch ---
+            if [[ -n "$work_branch" ]]; then
+                # Explicit --work-branch: switch/create as before
+                if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
+                    print_error "Failed to create or switch to branch"
+                    exit 1
+                fi
+            elif [[ "${NYIA_AUTO_BRANCH:-false}" == "true" ]]; then
+                # Config-based auto-branch: old timestamped behavior
+                if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "" "${CREATE_BRANCH:-false}"; then
+                    print_error "Failed to create or switch to branch"
                     exit 1
                 fi
             else
-                # Warn mode (default): check for mismatches, don't sync
-                warn_workspace_branch_mismatch "$current_work_branch"
+                # Default: work on current branch
+                local current
+                current=$(get_current_branch "$project_path")
+                if [[ -z "$current" || "$current" == "no-git" ]]; then
+                    print_error "Not in a git repository"
+                    print_info "Initialize git first: git init && git add . && git commit -m 'init'"
+                    exit 1
+                fi
+                if [[ "$current" == "HEAD" ]]; then
+                    print_error "Cannot work in detached HEAD state"
+                    print_info "Checkout a branch first: git checkout <branch-name>"
+                    exit 1
+                fi
+                # Protected branch guard
+                if is_protected_branch "$current" "$project_path"; then
+                    prompt_branch_on_protected "$assistant_name" "$current" "$project_path"
+                else
+                    print_info "Working on current branch: $current"
+                    export NYIA_WORK_BRANCH="$current"
+                fi
+            fi
+
+            # Capture the current branch after branch operations for container
+            current_work_branch=$(get_current_branch "$project_path")
+            export NYIA_WORK_BRANCH="$current_work_branch"
+
+            # Workspace branch handling (Plan 185: warn by default, sync when enabled)
+            if [[ "$WORKSPACE_MODE" == "true" ]] && [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
+                if [[ "$_ws_sync_enabled" == "true" ]]; then
+                    if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
+                        print_error "Failed to sync branches across workspace repositories"
+                        exit 1
+                    fi
+                else
+                    warn_workspace_branch_mismatch "$current_work_branch"
+                fi
+            fi
+        else
+            # --- Workspace mode: root has no git — branch checks on each RW repo ---
+            # Git presence already validated by verify_workspace_repos() upstream
+            local i
+            for i in "${!WORKSPACE_REPOS[@]}"; do
+                local repo="${WORKSPACE_REPOS[i]}"
+                local mode="${WORKSPACE_REPO_MODES[i]:-rw}"
+
+                # RO repos: skip entirely — read-only, no branch checks needed
+                [[ "$mode" == "ro" ]] && continue
+
+                # Get branch (git guaranteed by verify_workspace_repos)
+                local branch
+                branch=$(get_current_branch "$repo")
+
+                # Detached HEAD check (always, regardless of --work-branch)
+                if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
+                    print_error "Workspace repo '$(basename "$repo")' is in detached HEAD state"
+                    print_info "Checkout a branch first: cd '$repo' && git checkout <branch-name>"
+                    exit 1
+                fi
+
+                # Protected branch check — ONLY when no --work-branch.
+                # When --work-branch is specified, the sync block handles switching
+                # all repos to the target branch. Prompting here would create a
+                # contradiction: user picks a new branch via prompt, then sync
+                # overwrites it with --work-branch.
+                if [[ -z "$work_branch" ]]; then
+                    if is_protected_branch "$branch" "$repo"; then
+                        prompt_branch_on_protected "$assistant_name" "$branch" "$repo"
+                    fi
+                fi
+            done
+
+            # Set work branch for container metadata
+            # --work-branch if specified, else "workspace" sentinel (no single branch in workspace mode)
+            current_work_branch="${work_branch:-workspace}"
+            export NYIA_WORK_BRANCH="$current_work_branch"
+
+            # Workspace warn/sync (Plan 185) — only meaningful with --work-branch
+            # Without --work-branch, each repo keeps its own branch — nothing to compare
+            if [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]] && [[ -n "$work_branch" ]]; then
+                if [[ "$_ws_sync_enabled" == "true" ]]; then
+                    if ! sync_workspace_branches "$project_path" "$current_work_branch" "true"; then
+                        print_error "Failed to sync branches across workspace repositories"
+                        exit 1
+                    fi
+                else
+                    warn_workspace_branch_mismatch "$current_work_branch"
+                fi
+            elif [[ ${#WORKSPACE_REPOS[@]} -gt 0 ]]; then
+                print_verbose "Workspace mode without --work-branch: skipping branch warn/sync (each repo keeps its own branch)"
             fi
         fi
 
@@ -3869,9 +3928,13 @@ capture_original_branches() {
     declare -gA ORIGINAL_BRANCHES
     ORIGINAL_BRANCHES=()
 
-    # Capture main project
-    ORIGINAL_BRANCHES["$main_project"]=$(get_current_branch "$main_project")
-    print_verbose "Captured original branch for main: ${ORIGINAL_BRANCHES[$main_project]}"
+    # Capture main project — skip workspace root (no git)
+    if [[ "$WORKSPACE_MODE" != "true" ]]; then
+        ORIGINAL_BRANCHES["$main_project"]=$(get_current_branch "$main_project")
+        print_verbose "Captured original branch for main: ${ORIGINAL_BRANCHES[$main_project]}"
+    else
+        print_verbose "Workspace mode: skipping branch capture for workspace root (no git)"
+    fi
 
     # Capture each workspace repo (skip RO repos — they don't get branch operations)
     local i
@@ -3912,14 +3975,14 @@ rollback_all_branches() {
 
         if ! cd "$repo" 2>/dev/null; then
             print_warning "Cannot cd to $repo for rollback"
-            ((rollback_errors++))
+            rollback_errors=$((rollback_errors + 1))
             continue
         fi
 
         # Switch back to original branch
         if ! git checkout "$original" 2>/dev/null; then
             print_warning "Cannot checkout $original in $repo"
-            ((rollback_errors++))
+            rollback_errors=$((rollback_errors + 1))
         fi
 
         # Only delete the branch if WE created it (not if it already existed)
@@ -3927,7 +3990,7 @@ rollback_all_branches() {
             if git branch --list "$work_branch" | grep -q .; then
                 if ! git branch -D "$work_branch" 2>/dev/null; then
                     print_warning "Cannot delete branch $work_branch in $repo"
-                    ((rollback_errors++))
+                    rollback_errors=$((rollback_errors + 1))
                 else
                     print_verbose "Deleted branch $work_branch from $repo"
                 fi
@@ -3987,14 +4050,19 @@ sync_workspace_branches() {
     BRANCH_WAS_CREATED=()
 
     # Main project already has the branch (created by create_assistant_branch)
-    # Use MAIN_BRANCH_PRE_EXISTED flag set by run_assistant before create_assistant_branch
-    REPOS_WITH_NEW_BRANCH+=("$main_project")
-    if [[ "${MAIN_BRANCH_PRE_EXISTED:-false}" == "true" ]]; then
-        BRANCH_WAS_CREATED["$main_project"]=false  # Branch existed, don't delete
-        print_verbose "Main project branch existed before, won't delete on rollback"
+    # Skip workspace root — it has no git, tracking it would break rollback
+    if [[ "$WORKSPACE_MODE" != "true" ]]; then
+        # Use MAIN_BRANCH_PRE_EXISTED flag set by run_assistant before create_assistant_branch
+        REPOS_WITH_NEW_BRANCH+=("$main_project")
+        if [[ "${MAIN_BRANCH_PRE_EXISTED:-false}" == "true" ]]; then
+            BRANCH_WAS_CREATED["$main_project"]=false  # Branch existed, don't delete
+            print_verbose "Main project branch existed before, won't delete on rollback"
+        else
+            BRANCH_WAS_CREATED["$main_project"]=true   # We created it, safe to delete
+            print_verbose "Main project branch was created, will delete on rollback"
+        fi
     else
-        BRANCH_WAS_CREATED["$main_project"]=true   # We created it, safe to delete
-        print_verbose "Main project branch was created, will delete on rollback"
+        print_verbose "Workspace mode: skipping workspace root in sync tracking (no git)"
     fi
 
     # Step 3: Create/switch branch on each RW workspace repo (skip RO)
