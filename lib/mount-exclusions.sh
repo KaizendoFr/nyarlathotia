@@ -836,6 +836,12 @@ create_filtered_volume_args() {
 
 # Appends volume mounts for a repo WITHOUT clearing VOLUME_ARGS
 # Unlike create_volume_args(), this ADDS to existing array
+# Mirrors the full exclusion logic from create_volume_args():
+#   Phase 1: Directory exclusions (get_exclusion_dirs)
+#   Phase 2: Shallow-pattern directory scanning (maxdepth 2)
+#   Phase 3: Path-based directory scanning (.github/secrets, etc.)
+#   Phase 4: File exclusions (get_exclusion_patterns)
+# All phases respect overrides, nesting dedup, and tmpfs routing.
 # Usage: append_repo_volume_args "$repo_path" "$container_base_path" ["$mode"]
 #   mode: "ro" or "rw" (default: "rw")
 append_repo_volume_args() {
@@ -855,58 +861,185 @@ append_repo_volume_args() {
     # Add base mount for this repo (does NOT clear VOLUME_ARGS)
     VOLUME_ARGS+=("-v" "$repo_path:$container_subpath:${mount_mode}")
 
-    # Apply exclusions from this repo's .nyiakeeper/exclusions.conf if it exists
-    if [[ -f "$repo_path/.nyiakeeper/exclusions.conf" ]]; then
-        print_verbose "Applying exclusions from: $repo_path/.nyiakeeper/exclusions.conf"
-
-        # Get exclusion patterns for this repo
-        local patterns
-        patterns=$(get_exclusion_patterns "$repo_path")
-
-        if [[ -n "$patterns" ]]; then
-            local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
-
-            while IFS= read -r pattern; do
-                [[ -z "$pattern" ]] && continue
-
-                # Find matching files/directories
-                while IFS= read -r -d '' match; do
-                    local rel_path="${match#$repo_path/}"
-
-                    # Skip Nyia Keeper system paths
-                    if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
-                        continue
-                    fi
-
-                    if [[ -d "$match" ]]; then
-                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
-                        print_verbose "Excluding directory in repo: $rel_path"
-                    else
-                        VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
-                        print_verbose "Excluding file in repo: $rel_path"
-                    fi
-                done < <(find "$repo_path" -maxdepth "$max_depth" \
-                    \( -name node_modules -o -name vendor -o -name site-packages \
-                       -o -name __pycache__ -o -name .venv -o -name venv \
-                       -o -name target \) -prune \
-                    -o -name "$pattern" -print0 2>/dev/null)
-            done <<< "$patterns"
-        fi
+    # Skip exclusion scanning if disabled (repo is still mounted above)
+    if [[ "$ENABLE_MOUNT_EXCLUSIONS" != "true" ]]; then
+        print_verbose "Mount exclusions disabled, skipping repo exclusion scanning"
+        return 0
     fi
 
-    # Always apply built-in security exclusions to repos
-    local builtin_patterns=".env .env.* *.pem *.key credentials.json"
-    for pattern in $builtin_patterns; do
+    # Ensure explanation placeholder files exist (idempotent)
+    setup_explanation_files
+
+    local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
+
+    # Load user override patterns from this repo's exclusions.conf
+    local -a file_overrides=()
+    local -a dir_overrides=()
+    while IFS= read -r ov; do [[ -n "$ov" ]] && file_overrides+=("$ov"); done < <(get_user_override_patterns "$repo_path")
+    while IFS= read -r ov; do [[ -n "$ov" ]] && dir_overrides+=("$ov"); done < <(get_user_override_dirs "$repo_path")
+
+    # === Phase 1: Directory exclusions (get_exclusion_dirs) ===
+    local -a scanned_excluded_dirs=()
+    local dir_patterns
+    dir_patterns=$(get_exclusion_dirs "$repo_path")
+    print_verbose "Repo directory exclusion patterns: $dir_patterns"
+
+    local case_flag
+    case_flag=$(get_find_case_args "$repo_path")
+    local -a dir_find_expr=()
+    while IFS=' ' read -r pattern; do
+        [[ -z "$pattern" ]] && continue
+        [[ ${#dir_find_expr[@]} -gt 0 ]] && dir_find_expr+=("-o")
+        dir_find_expr+=("$case_flag" "$pattern")
+    done < <(echo "$dir_patterns" | tr ' ' '\n')
+
+    if [[ ${#dir_find_expr[@]} -gt 0 ]]; then
         while IFS= read -r -d '' match; do
             local rel_path="${match#$repo_path/}"
-            if [[ -f "$match" ]]; then
-                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
-                print_verbose "Excluding sensitive file in repo: $rel_path"
+
+            # Skip if already under an excluded parent directory
+            if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                print_verbose "Skipping directory (parent already excluded) in repo: $rel_path"
+                continue
             fi
-        done < <(find "$repo_path" -maxdepth 3 \
+
+            # Skip Nyia Keeper system directories
+            if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                print_verbose "Skipping Nyia Keeper system directory in repo: $rel_path"
+                continue
+            fi
+
+            # Skip if user has overridden this directory
+            if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                print_verbose "Override: keeping directory visible in repo: $rel_path"
+                continue
+            fi
+
+            scanned_excluded_dirs+=("$rel_path")
+            local dir_basename
+            dir_basename=$(basename "$rel_path")
+            if is_package_manager_cache_pattern "$dir_basename"; then
+                VOLUME_ARGS+=("--mount" "type=tmpfs,destination=$container_subpath/$rel_path,tmpfs-mode=1777")
+                print_verbose "Excluding directory (writable tmpfs) in repo: $rel_path"
+            else
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding directory in repo: $rel_path"
+            fi
+        done < <(find "$repo_path" -maxdepth "$max_depth" \
             \( -name node_modules -o -name vendor -o -name site-packages \
                -o -name __pycache__ -o -name .venv -o -name venv \
                -o -name target \) -prune \
-            -o -name "$pattern" -print0 2>/dev/null)
-    done
+            -o -type d \( "${dir_find_expr[@]}" \) -print0 2>/dev/null)
+    fi
+
+    # === Phase 2: Shallow-pattern directory scanning (maxdepth 2) ===
+    local shallow_patterns
+    shallow_patterns=$(get_shallow_exclusion_dirs)
+    if [[ -n "$shallow_patterns" ]]; then
+        print_verbose "Repo shallow exclusion patterns (depth 2): $shallow_patterns"
+        local -a shallow_find_expr=()
+        while IFS=' ' read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            [[ ${#shallow_find_expr[@]} -gt 0 ]] && shallow_find_expr+=("-o")
+            shallow_find_expr+=("$case_flag" "$pattern")
+        done < <(echo "$shallow_patterns" | tr ' ' '\n')
+
+        if [[ ${#shallow_find_expr[@]} -gt 0 ]]; then
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$repo_path/}"
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping directory (parent already excluded) in repo: $rel_path"
+                    continue
+                fi
+                if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                    print_verbose "Skipping Nyia Keeper system directory in repo: $rel_path"
+                    continue
+                fi
+                if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                    print_verbose "Override: keeping directory visible in repo: $rel_path"
+                    continue
+                fi
+                scanned_excluded_dirs+=("$rel_path")
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding directory (shallow) in repo: $rel_path"
+            done < <(find "$repo_path" -maxdepth 2 -type d \( "${shallow_find_expr[@]}" \) -print0 2>/dev/null)
+        fi
+    fi
+
+    # === Phase 3: Path-based directory scanning (.github/secrets, etc.) ===
+    local path_patterns
+    path_patterns=$(get_exclusion_path_patterns)
+    if [[ -n "$path_patterns" ]]; then
+        print_verbose "Repo path-based exclusion patterns: $path_patterns"
+        local -a path_find_expr=()
+        while IFS=' ' read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            [[ ${#path_find_expr[@]} -gt 0 ]] && path_find_expr+=("-o")
+            path_find_expr+=("-path" "*/$pattern")
+        done < <(echo "$path_patterns" | tr ' ' '\n')
+
+        if [[ ${#path_find_expr[@]} -gt 0 ]]; then
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$repo_path/}"
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping directory (parent already excluded) in repo: $rel_path"
+                    continue
+                fi
+                if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                    continue
+                fi
+                if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                    print_verbose "Override: keeping directory visible in repo: $rel_path"
+                    continue
+                fi
+                scanned_excluded_dirs+=("$rel_path")
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding directory (path) in repo: $rel_path"
+            done < <(find "$repo_path" -maxdepth "$max_depth" -type d \( "${path_find_expr[@]}" \) -print0 2>/dev/null)
+        fi
+    fi
+
+    # === Phase 4: File exclusions (get_exclusion_patterns) ===
+    # Uses the full built-in + user-defined pattern set, same as create_volume_args()
+    local patterns
+    patterns=$(get_exclusion_patterns "$repo_path")
+    print_verbose "Repo file exclusion patterns: $patterns"
+
+    local -a file_find_expr=()
+    while IFS=' ' read -r pattern; do
+        [[ -z "$pattern" ]] && continue
+        [[ ${#file_find_expr[@]} -gt 0 ]] && file_find_expr+=("-o")
+        file_find_expr+=("$case_flag" "$pattern")
+    done < <(echo "$patterns" | tr ' ' '\n')
+
+    if [[ ${#file_find_expr[@]} -gt 0 ]]; then
+        while IFS= read -r -d '' match; do
+            local rel_path="${match#$repo_path/}"
+
+            # Skip Nyia Keeper system files
+            if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                print_verbose "Skipping Nyia Keeper system file in repo: $rel_path"
+                continue
+            fi
+
+            # Skip if file is under an excluded directory
+            if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                print_verbose "Skipping file (parent dir excluded) in repo: $rel_path"
+                continue
+            fi
+
+            # Skip if user has overridden this file
+            if [[ ${#file_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${file_overrides[@]}"; then
+                print_verbose "Override: keeping file visible in repo: $rel_path"
+                continue
+            fi
+
+            VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+            print_verbose "Excluding file in repo: $rel_path"
+        done < <(find "$repo_path" -maxdepth "$max_depth" \
+            \( -name node_modules -o -name vendor -o -name site-packages \
+               -o -name __pycache__ -o -name .venv -o -name venv \
+               -o -name target \) -prune \
+            -o -type f \( "${file_find_expr[@]}" \) -print0 2>/dev/null)
+    fi
 }

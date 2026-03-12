@@ -116,7 +116,12 @@ main() {
 
     # Handle requirements check
     if [[ "$CHECK_REQUIREMENTS" == "true" ]]; then
-        show_requirements_check "$PROJECT_PATH"
+        # Detect workspace mode early for requirements check
+        local _ws_mode=false
+        if declare -f is_workspace >/dev/null 2>&1 && is_workspace "$PROJECT_PATH"; then
+            _ws_mode=true
+        fi
+        show_requirements_check "$PROJECT_PATH" "$_ws_mode"
         exit $?
     fi
 
@@ -167,6 +172,39 @@ main() {
         else
             echo "Skill resolution library not found" >&2
         fi
+        exit 0
+    fi
+
+    # Handle workspace init mode (info-only, scaffolds workspace.conf) - Plan 199
+    if [[ "$WORKSPACE_INIT" == "true" ]]; then
+        if [[ -f "$PROJECT_PATH/.nyiakeeper/workspace.conf" ]]; then
+            print_error "workspace.conf already exists at $PROJECT_PATH/.nyiakeeper/workspace.conf"
+            print_info "Edit the existing file directly"
+            exit 1
+        fi
+        mkdir -p "$PROJECT_PATH/.nyiakeeper"
+        cat > "$PROJECT_PATH/.nyiakeeper/workspace.conf" << 'WORKSPACE_TEMPLATE'
+# Nyia Keeper Workspace Configuration
+# =====================================
+# A workspace lets you mount multiple repositories into a single container.
+# Each line defines one repository: PATH MODE
+#
+# PATH  = absolute path to the repository on your host
+# MODE  = rw (read-write, requires git) or ro (read-only)
+#
+# YOU MUST EDIT THESE PATHS to match your actual repositories!
+# The examples below are placeholders and WILL NOT WORK as-is.
+#
+# Examples:
+# /home/user/projects/my-api rw
+# /home/user/projects/shared-libs ro
+
+# --- Edit below: add your repositories ---
+# /path/to/your/main-project rw
+# /path/to/your/dependency ro
+WORKSPACE_TEMPLATE
+        print_success "Created workspace configuration at: $PROJECT_PATH/.nyiakeeper/workspace.conf"
+        print_info "Edit the file to add your repository paths, then run the assistant normally"
         exit 0
     fi
 
@@ -322,7 +360,7 @@ main() {
     
     # Run requirements check before execution (unless skipped)
     if [[ "$SKIP_CHECKS" != "true" ]]; then
-        if ! check_requirements_fast "$PROJECT_PATH"; then
+        if ! check_requirements_fast "$PROJECT_PATH" "$WORKSPACE_MODE"; then
             print_error "Requirements check failed. Fix issues above or use --skip-checks to bypass"
             print_info "Run '$config_assistant_name --check-requirements' for detailed diagnostics"
             exit 1

@@ -1483,35 +1483,46 @@ check_disk_space() {
 # Note: check_disk_space() moved above to be runtime-safe
 
 # Fast requirements check (< 200ms)
+# Args: $1 = project_path, $2 = workspace_mode (true/false)
+# In workspace mode, skip git repository check on the workspace root
+# because workspace roots are not git repos — individual repos are
+# already verified by verify_workspace_repos().
 check_requirements_fast() {
     local project_path="${1:-$(pwd)}"
+    local workspace_mode="${2:-false}"
     local exit_code=0
-    
+
     print_status "Checking system requirements..."
-    
+
     # Critical checks that must pass
     check_git_available || exit_code=1
-    check_git_repository || exit_code=1
+    if [[ "$workspace_mode" != "true" ]]; then
+        check_git_repository || exit_code=1
+    fi
     check_docker_available || exit_code=1
     check_directory_permissions "$project_path" || exit_code=1
-    
+
     # Warnings (don't fail)
-    check_git_clean_state
+    if [[ "$workspace_mode" != "true" ]]; then
+        check_git_clean_state
+    fi
     check_user_mapping
     check_disk_space "$project_path"
-    
+
     return $exit_code
 }
 
 # Full requirements check (includes expensive operations)
+# Args: $1 = project_path, $2 = workspace_mode (true/false)
 check_requirements_full() {
     local project_path="${1:-$(pwd)}"
+    local workspace_mode="${2:-false}"
     local exit_code=0
-    
+
     print_status "Running comprehensive requirements check..."
-    
+
     # Run fast checks first
-    check_requirements_fast "$project_path" || exit_code=1
+    check_requirements_fast "$project_path" "$workspace_mode" || exit_code=1
     
     # Additional expensive checks
     if [[ $exit_code -eq 0 ]]; then
@@ -1530,15 +1541,20 @@ check_requirements_full() {
 }
 
 # Show requirements check results
+# Args: $1 = project_path, $2 = workspace_mode (true/false)
 show_requirements_check() {
     local project_path="${1:-$(pwd)}"
-    
+    local workspace_mode="${2:-false}"
+
     echo "=== Nyia Keeper Requirements Check ==="
     echo "Project: $(basename "$project_path")"
     echo "Path: $project_path"
+    if [[ "$workspace_mode" == "true" ]]; then
+        echo "Mode: workspace (git check on individual repos, not workspace root)"
+    fi
     echo ""
-    
-    check_requirements_full "$project_path"
+
+    check_requirements_full "$project_path" "$workspace_mode"
     local result=$?
     
     echo ""

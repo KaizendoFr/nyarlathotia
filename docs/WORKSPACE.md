@@ -4,7 +4,13 @@ Workspace mode allows a single Nyia Keeper session to work across multiple relat
 
 ## Quick Start
 
-1. Create a workspace configuration file:
+1. Create a workspace configuration file using `--workspace-init` (recommended):
+```bash
+nyia-claude --workspace-init
+# Edit the generated template at .nyiakeeper/workspace.conf
+```
+
+Or manually:
 ```bash
 mkdir -p .nyiakeeper
 cat > .nyiakeeper/workspace.conf << 'EOF'
@@ -101,7 +107,7 @@ repo2/.nyiakeeper/exclusions.conf   # Applied to repo2 mount
 workspace/.nyiakeeper/exclusions.conf  # Applied to main workspace
 ```
 
-Built-in security exclusions (`.env`, `.key`, `.pem`, etc.) are applied to all mounts (both RO and RW).
+Built-in security exclusions (`.env`, `.key`, `.pem`, etc.) are applied to all mounts (both RO and RW). For full details, see [MOUNT_EXCLUSIONS.md](MOUNT_EXCLUSIONS.md).
 
 ## RO vs RW Behavior Summary
 

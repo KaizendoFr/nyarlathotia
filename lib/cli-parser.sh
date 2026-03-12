@@ -57,6 +57,9 @@ export LIST_AGENTS="false"
 # Skill listing (Plan 177)
 export LIST_SKILLS="false"
 
+# Workspace init (Plan 199)
+export WORKSPACE_INIT="false"
+
 # Command approval mode (Plan 145)
 export NYIA_COMMAND_MODE_CLI=""
 
@@ -164,6 +167,7 @@ get_assistant_arg_desc() {
         "--agent") echo "Select agent persona for this session (e.g., reviewer, planner)" ;;
         "--list-agents") echo "List available agent personas for this assistant" ;;
         "--list-skills") echo "List available skills for this assistant" ;;
+        "--workspace-init") echo "Create workspace.conf template for multi-repository mode" ;;
         "--command-mode") echo "Set command approval mode for this session (safe or full)" ;;
         "--rag") echo "Enable RAG codebase search (requires Ollama + NYIA_RAG_MODEL in config)" ;;
         "--rag-verbose") echo "Enable verbose debug logging for RAG indexing" ;;
@@ -173,7 +177,7 @@ get_assistant_arg_desc() {
 
 # Get all assistant arguments (for iteration)
 get_assistant_args() {
-    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --agent --list-agents --list-skills --rag --rag-verbose"
+    echo "--image --flavor --list-flavors --no-cache --status --list-images --base-branch --work-branch,-w --create --build-custom-image --setup --login --check-requirements --skip-checks --shell --set-api-key --disable-exclusions --agent --list-agents --list-skills --workspace-init --rag --rag-verbose"
 }
 
 # Get description for dispatcher arguments
@@ -364,6 +368,7 @@ Command Approval Mode:
   --command-mode <mode>    # Set mode: safe (default) or full
 
 Workspace Mode (Multi-Repository):
+  --workspace-init         # Create workspace.conf template (recommended first step)
   Create .nyiakeeper/workspace.conf with: <path> <ro|rw> (one per line)
   RW repos: full git guards, branch sync; RO repos: read-only, no git needed
   Workspace is auto-detected; repos mounted at /project/{hash}/repos/
@@ -646,6 +651,10 @@ parse_assistant_args() {
                 export LIST_SKILLS="true"
                 shift
                 ;;
+            --workspace-init)
+                export WORKSPACE_INIT="true"
+                shift
+                ;;
             --command-mode)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     echo "Error: --command-mode requires a value (safe or full)" >&2
@@ -756,6 +765,7 @@ parse_args() {
     export NYIA_AGENT=""
     export LIST_AGENTS="false"
     export LIST_SKILLS="false"
+    export WORKSPACE_INIT="false"
     export DISABLE_EXCLUSIONS="false"
     export PROJECT_PATH=""
     export FLAVOR=""
@@ -809,7 +819,7 @@ validate_args() {
 
 
     # Info-only flags bypass build validation (they exit before any build runs)
-    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" || "$LIST_AGENTS" == "true" || "$LIST_SKILLS" == "true" ]]; then
+    if [[ "$LIST_FLAVORS" == "true" || "$SHOW_STATUS" == "true" || "$LIST_IMAGES" == "true" || "$SHOW_HELP" == "true" || "$LIST_AGENTS" == "true" || "$LIST_SKILLS" == "true" || "$WORKSPACE_INIT" == "true" ]]; then
         return 0
     fi
 

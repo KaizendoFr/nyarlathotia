@@ -1,6 +1,6 @@
 ---
 name: pair-review
-description: Review a plan or respond to a review as a pair-programming architect. Supports round-trip workflows between assistants with human-in-the-loop discussion. Use /pair-review plan <N> to review, /pair-review respond <N> to respond to a review.
+description: Review a plan or respond to a review as a pair-programming architect. Supports round-trip workflows between assistants with human-in-the-loop discussion. Use /pair-review plan {N} to review, /pair-review respond {N} to respond to a review.
 ---
 
 # Pair-Review - Architect Review Skill
