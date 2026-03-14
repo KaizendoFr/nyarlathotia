@@ -2786,8 +2786,8 @@ login_assistant() {
     if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
         if is_registry_image "$full_image_name"; then
-            print_status "Image not found locally, pulling from registry..."
-            docker pull "$full_image_name" >/dev/null 2>&1 || true
+            print_status "Image not found locally, pulling from registry (this may take a few minutes)..."
+            docker pull "$full_image_name" 2>/dev/null || true
         fi
     fi
     if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
@@ -3301,8 +3301,8 @@ run_assistant() {
     if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
         # Inspect failed — try pulling if it looks like a registry image (macOS Docker Desktop compat)
         if is_registry_image "$full_image_name"; then
-            print_status "Image not found locally, pulling from registry..."
-            docker pull "$full_image_name" >/dev/null 2>&1 || true
+            print_status "Image not found locally, pulling from registry (this may take a few minutes)..."
+            docker pull "$full_image_name" 2>/dev/null || true
         fi
     fi
     if ! docker image inspect "$full_image_name" >/dev/null 2>&1; then
@@ -3322,8 +3322,8 @@ run_assistant() {
         if [[ -n "$docker_image" ]]; then
             # User explicitly specified --image: try registry pull before giving up
             if is_registry_image "$full_image_name"; then
-                print_status "Trying to pull explicit image from registry..."
-                if docker pull "$full_image_name" >/dev/null 2>&1; then
+                print_status "Trying to pull explicit image from registry (this may take a few minutes)..."
+                if docker pull "$full_image_name" 2>/dev/null; then
                     print_success "Image pulled: $full_image_name"
                     # Pull succeeded — skip error, continue to docker run below
                 else

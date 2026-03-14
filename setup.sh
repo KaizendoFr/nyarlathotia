@@ -84,6 +84,17 @@ if [[ -f "VERSION" ]]; then
     echo "✅ Installed version: $(cat VERSION)"
 fi
 
+# Persist channel selection (Plan 192).
+# The public installer (public-install.sh) writes CHANNEL before calling setup.sh.
+# If NYIA_CHANNEL is set directly, honour it here too.
+# If neither is set, the CHANNEL file is left absent (defaults to "latest").
+if [[ -n "${NYIA_CHANNEL:-}" ]]; then
+    _config_root="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
+    mkdir -p "$_config_root"
+    echo "$NYIA_CHANNEL" > "$_config_root/CHANNEL"
+    echo "✅ Update channel: $NYIA_CHANNEL"
+fi
+
 # Seed built-in skills to global raw source (Plan 193)
 # These become visible to --list-skills and get propagated to assistants at launch
 _nyia_home="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"

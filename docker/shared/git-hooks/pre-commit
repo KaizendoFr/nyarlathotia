@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Nyia Keeper: prevent committing excluded file placeholders (Plan 175)
+#
+# This hook scans staged files for the placeholder marker text inserted by the
+# mount exclusions system. If any staged file contains the marker it means the
+# real file was replaced by a placeholder inside the container, and committing
+# it would corrupt the repository.
+#
+# The hook is installed by base-entrypoint.sh at container startup.
+# It is safe to run outside of Nyia Keeper containers (no-ops when marker absent).
+
+MARKER="FILE EXCLUDED FOR SECURITY"
+bad_files=()
+
+# Iterate over all staged files (added, copied, modified, renamed)
+while IFS= read -r file; do
+    # Read the staged content (not the working-tree file) and check first 10 lines
+    if git show ":$file" 2>/dev/null | head -10 | grep -qF "$MARKER"; then
+        bad_files+=("$file")
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
+
+if [[ ${#bad_files[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "ERROR: Nyia Keeper blocked commit — staged files contain exclusion placeholders:" >&2
+    printf "  - %s\n" "${bad_files[@]}" >&2
+    echo "" >&2
+    echo "These files were replaced with security placeholders inside the container." >&2
+    echo "Committing them would overwrite the real content in git history." >&2
+    echo "" >&2
+    echo "To unstage each file:" >&2
+    for f in "${bad_files[@]}"; do
+        echo "  git reset HEAD \"$f\"" >&2
+    done
+    echo "" >&2
+    echo "The real file content is safe on the host filesystem." >&2
+    echo "To include this file in the container, use --disable-exclusions." >&2
+    echo "" >&2
+    exit 1
+fi
+
+exit 0

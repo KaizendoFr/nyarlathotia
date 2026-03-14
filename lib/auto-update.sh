@@ -18,6 +18,16 @@ readonly GITHUB_RELEASES_URL="https://github.com/${GITHUB_REPO}/releases"
 readonly MAX_RELEASE_NOTES_LINES=20
 readonly LOCK_STALE_TIMEOUT=300      # 5 minutes — real updates can exceed 60s on slow connections
 
+# Channel manifest URL — hosted on the public runtime repo (raw content).
+# Maps channel names ("latest", "alpha") to immutable release tags.
+# Updated automatically for "latest" on every release.sh --push.
+# Updated manually for "alpha" via scripts/promote-channel.sh.
+readonly CHANNELS_MANIFEST_URL="https://raw.githubusercontent.com/KaizendoFr/nyia-keeper/main/channels.json"
+
+# Approved channel names for channel-aware resolution.
+readonly CHANNEL_LATEST="latest"
+readonly CHANNEL_ALPHA="alpha"
+
 # --- Locking ---
 
 acquire_update_lock() {
@@ -116,10 +126,115 @@ CURRENT_TAG=${current_tag}
 EOF
 }
 
+# --- Channel State ---
+# Persists the user's selected update channel separately from the installed version.
+# File: $NYIAKEEPER_HOME/CHANNEL   (single line: "latest", "alpha", or empty = latest)
+# An empty or missing CHANNEL file is treated as the "latest" channel.
+
+get_installed_channel() {
+    local nyia_home="${NYIAKEEPER_HOME:-}"
+    # Fall back to XDG config dir if NYIAKEEPER_HOME not set
+    if [[ -z "$nyia_home" ]]; then
+        nyia_home="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
+    fi
+    local channel_file="$nyia_home/CHANNEL"
+
+    # Environment variable wins (allows scripted overrides without modifying state)
+    if [[ -n "${NYIA_CHANNEL:-}" ]]; then
+        echo "$NYIA_CHANNEL"
+        return 0
+    fi
+
+    if [[ -f "$channel_file" ]]; then
+        local ch
+        ch=$(tr -d '[:space:]' < "$channel_file" | head -1)
+        if [[ -n "$ch" ]]; then
+            echo "$ch"
+            return 0
+        fi
+    fi
+
+    # Default channel: latest
+    echo "$CHANNEL_LATEST"
+}
+
+set_installed_channel() {
+    local channel="$1"
+    local nyia_home="${NYIAKEEPER_HOME:-}"
+    if [[ -z "$nyia_home" ]]; then
+        nyia_home="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
+    fi
+    local channel_file="$nyia_home/CHANNEL"
+
+    if [[ -z "$channel" ]]; then
+        # Empty channel = use default (latest); remove the file
+        rm -f "$channel_file"
+        return 0
+    fi
+
+    mkdir -p "$nyia_home"
+    echo "$channel" > "$channel_file"
+}
+
+# --- Channel Manifest ---
+# Resolves a channel name to an immutable release tag via the public channels.json manifest.
+# Returns the tag on stdout.  Returns 1 (empty output) on failure.
+
+fetch_channel_version() {
+    local channel="$1"
+
+    local response
+    response=$(curl -s --max-time "$UPDATE_CURL_TIMEOUT" \
+        "$CHANNELS_MANIFEST_URL" 2>/dev/null) || response=""
+
+    if [[ -z "$response" ]]; then
+        return 1
+    fi
+
+    # Parse the JSON value for the requested channel key (no jq dependency).
+    # Pattern: "channel": "vX.Y.Z-alpha.N"
+    local tag
+    tag=$(echo "$response" \
+        | grep -o "\"${channel}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+        | head -1 \
+        | sed "s/.*\"${channel}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/") \
+        || tag=""
+
+    if [[ -n "$tag" ]]; then
+        echo "$tag"
+        return 0
+    fi
+
+    return 1
+}
+
 # --- Version Discovery ---
 
 fetch_latest_version() {
     local current_version="${1:-}"
+    # Optional: caller may pass the installed channel to select the right resolution path.
+    local installed_channel="${2:-}"
+
+    # Resolve installed channel if not provided
+    if [[ -z "$installed_channel" ]]; then
+        installed_channel=$(get_installed_channel)
+    fi
+
+    # --- Channel manifest path ---
+    # For "alpha" channel: resolve exclusively through the manifest so the user
+    # stays on the maintainer-approved build, not the newest published build.
+    if [[ "$installed_channel" == "$CHANNEL_ALPHA" ]]; then
+        local manifest_tag
+        manifest_tag=$(fetch_channel_version "$CHANNEL_ALPHA") || manifest_tag=""
+        if [[ -n "$manifest_tag" ]]; then
+            _write_update_cache "$manifest_tag" "$current_version"
+            echo "$manifest_tag"
+            return 0
+        fi
+        # Manifest unreachable: fall through to GitHub API fallback
+    fi
+
+    # --- GitHub API path (for "latest" channel and fallback) ---
 
     # Stage 1: try /releases/latest (works when repo has non-prerelease releases)
     local response
@@ -465,6 +580,9 @@ _verify_checksum() {
 
 perform_update() {
     local target_tag="${1:-}"
+    # Optional: channel context for this update.  When non-empty the CHANNEL
+    # state file is updated to match so future update checks stay on the same channel.
+    local channel_context="${2:-}"
 
     if ! acquire_update_lock; then
         echo "Another update is in progress. Please try again later." >&2
@@ -475,7 +593,10 @@ perform_update() {
     if [[ -z "$target_tag" ]]; then
         local current
         current=$(get_installed_version 2>/dev/null) || current=""
-        target_tag=$(fetch_latest_version "$current")
+        # Use installed channel to drive resolution
+        local ch
+        ch=$(get_installed_channel)
+        target_tag=$(fetch_latest_version "$current" "$ch")
         if [[ -z "$target_tag" ]]; then
             echo "Error: Could not determine latest version." >&2
             release_update_lock
@@ -593,6 +714,11 @@ perform_update() {
     # Must cd into staging because setup.sh uses relative bin/ and lib/ paths
     if [[ -f "$staging_dir/setup.sh" ]]; then
         (cd "$staging_dir" && bash ./setup.sh) 2>/dev/null || true
+    fi
+
+    # Persist channel selection so future update checks stay on the same channel.
+    if [[ -n "$channel_context" ]]; then
+        set_installed_channel "$channel_context" 2>/dev/null || true
     fi
 
     # Verify version
@@ -751,10 +877,13 @@ check_for_updates_if_due() {
         return 0
     }
 
-    echo "Checking for new version..." >&2
+    local installed_channel
+    installed_channel=$(get_installed_channel)
+
+    echo "Checking for new version (channel: $installed_channel)..." >&2
 
     local latest_version
-    latest_version=$(fetch_latest_version "$current_version")
+    latest_version=$(fetch_latest_version "$current_version" "$installed_channel")
 
     if [[ -z "$latest_version" ]]; then
         release_update_lock
@@ -764,7 +893,8 @@ check_for_updates_if_due() {
     # Compare
     if compare_versions "$current_version" "$latest_version"; then
         if show_update_prompt "$current_version" "$latest_version"; then
-            perform_update "$latest_version"
+            # Pass the installed channel so perform_update preserves channel state.
+            perform_update "$latest_version" "$installed_channel"
         else
             echo "Update skipped. Run 'nyia update' to update later."
         fi

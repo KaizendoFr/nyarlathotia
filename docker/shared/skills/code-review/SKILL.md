@@ -28,7 +28,49 @@ plan-ref:
 3. **Read the code**: Read each changed file (or the specific sections mentioned in the plan).
 4. **Read existing tests**: Find test files related to the changed code.
 
-## C) Review Checklist
+## C) Spawn Reviewer Subagent
+
+Use the Task tool to spawn a reviewer subagent with fresh context. This gives isolated, unbiased analysis separate from the current conversation history.
+
+**Task prompt template:**
+
+```
+You are a pragmatic code reviewer. Your job:
+1. Read the plan file: {plan_path}
+2. Read all changed files identified in the plan's Implementation Steps
+3. Cross-reference with `git diff --name-only` output if provided
+4. Review the code using these priorities: correctness, security, robustness, style (in that order)
+5. Write your review to: .nyiakeeper/plans/code-review-plan-{N}.md
+
+CONSTRAINTS (strictly enforced):
+- You may READ any file in the repository
+- You may WRITE ONLY to .nyiakeeper/plans/code-review-plan-{N}.md
+- Do NOT modify source files, tests, or any other files
+- Do NOT make git commits
+
+Review criteria:
+- Does the code implement what the plan requires?
+- Are there security issues? (injection, path traversal, unquoted vars, exposed secrets)
+- Are error paths handled?
+- Do tests test behavior or implementation details?
+- Working code > beautiful code. Flag risks, not style.
+
+Output format for the review file:
+## Code Review: Plan {N} - {title}
+### Files Reviewed
+### Must-Fix
+### Should-Fix
+### Looks Good
+### Plan Compliance
+### Test Coverage Assessment
+### Verdict: PASS | PASS WITH FIXES | NEEDS WORK
+```
+
+After the subagent completes, read `.nyiakeeper/plans/code-review-plan-{N}.md` and present the findings to the user.
+
+**Fallback**: If the Task tool is not available, proceed directly to section D using the loaded context.
+
+## D) Review Criteria
 
 Review the code against these criteria, in priority order:
 
@@ -77,7 +119,7 @@ Review the code against these criteria, in priority order:
 - No copy-paste duplication that will drift apart
 - Clear module boundaries
 
-## D) Review Philosophy
+## E) Review Philosophy
 
 **BE PRAGMATIC, NOT PERFECTIONIST:**
 - Working code that is slightly ugly > beautiful code that is untested
@@ -92,7 +134,7 @@ Review the code against these criteria, in priority order:
 - "This SQL is injectable" = must-fix
 - "This function is 25 lines instead of 20" = skip it
 
-## E) Output Format
+## F) Output Format
 
 Present findings in this structure:
 
@@ -123,13 +165,13 @@ Present findings in this structure:
 ### Verdict: {PASS | PASS WITH FIXES | NEEDS WORK}
 ```
 
-## F) After Review
+## G) After Review
 
 1. **If PASS**: Tell the user the code is ready. Update plan status if applicable.
 2. **If PASS WITH FIXES**: List the specific fixes needed. Offer to implement must-fix items.
 3. **If NEEDS WORK**: Explain what needs to change and why. Reference plan requirements.
 
-## G) Key Rules
+## H) Key Rules
 
 - **Read the actual code** — never review from memory or plan description alone
 - **Run tests if possible** — `bats tests/bats/test_*.bats` for this project

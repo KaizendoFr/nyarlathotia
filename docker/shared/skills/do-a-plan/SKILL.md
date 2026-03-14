@@ -44,6 +44,9 @@ High-level strategy and key decisions
 ## Risks & Mitigations
 - Risk 1: Description → Mitigation: Specific action
 
+## Resources Modified (optional — for batch runs)
+- [List of files, systems, or documents this plan changes]
+
 ## Definition of Done
 - Validated with user
 
@@ -58,6 +61,7 @@ High-level strategy and key decisions
 - Minimal scope (small enough to run safely)
 - No hidden sub-steps
 - LLM-friendly (context-limited)
+- Relative outcomes (e.g., "baseline + 6 new" not "1032 total")
 
 ## D) Test-Aware Workflow (Mandatory)
 
@@ -70,3 +74,16 @@ High-level strategy and key decisions
 
 - Add new task to 📋 Ready section referencing the plan file
 - Format: `- [ ] Task description - Priority: X - Plan: plans/{plan-file}.md`
+
+## F) Pre-flight Checklist (before finalizing)
+
+Scan the plan for these common gaps before writing:
+
+- [ ] **Scope complete?** What else references, depends on, or documents this?
+      (Related configs, generated outputs, help text, user docs, changelogs)
+- [ ] **Edge cases defined?** What happens on error, empty input, missing resource, offline?
+      (Define explicit behavior — not just "handle errors")
+- [ ] **Undo plan?** How to reverse if it goes wrong?
+- [ ] **Verification concrete?** How do you prove each step worked?
+      (Prefer relative criteria: "baseline + N", not fixed counts)
+- [ ] **Sections aligned?** Do requirements, approach, steps, and done criteria tell the same story?

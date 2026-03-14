@@ -712,6 +712,21 @@ Examples:
 
 Note: Exclusions are auto-initialized on first nyia run in a project
 
+Custom Exclusions:
+  Add your own patterns to .nyiakeeper/exclusions.conf in your project:
+
+    .env.local              # Exclude a specific file
+    secrets/                # Exclude a directory (trailing /)
+    *.backup                # Exclude by extension
+
+  Override automatic exclusions with ! prefix (force-include):
+
+    !.env.example           # Keep visible despite auto-exclusion
+    !vendor/                # Keep directory visible
+
+  Run 'nyia exclusions init' to create the config, or edit it directly.
+  See: docs/MOUNT_EXCLUSIONS.md for full documentation.
+
 To disable exclusions temporarily:
   ENABLE_MOUNT_EXCLUSIONS=false nyia-claude "your prompt"
   Or use: nyia-claude --disable-exclusions "your prompt"

@@ -12,7 +12,7 @@ Supports two modes for round-trip review workflows between assistants.
 Parse the arguments to determine mode and plan reference:
 
 ```
-/pair-review [subcommand] <plan-ref>
+/pair-review [subcommand] <plan-ref> [as <lens>]
 
 subcommand:
   "plan" or omitted  → PLAN MODE (reviewer writes/updates review)
@@ -21,6 +21,13 @@ subcommand:
 plan-ref:
   Number (e.g., "121")     → find .nyiakeeper/plans/121-*.md (exclude pair-review-* files)
   File path                → use directly
+
+lens (optional — plan mode only, shapes review perspective):
+  "architect" / omitted → Design, simplicity, consistency (default)
+  "risk"    → Edge cases, error paths, undo, safety
+  "user"    → Docs, help text, onboarding, UX
+  "ops"     → Deploy, dist, verify, monitor
+  Multiple: "as risk,user". Parse order: subcommand → ref → "as" lens
 ```
 
 ## B) Load Context (both modes)
@@ -48,11 +55,17 @@ Perform a full review with these focus areas:
 - Testability and test-aware workflow
 - Risk management and rollback
 
+**Completeness focus:**
+- Scope: plan covers all affected surfaces? (docs, configs, outputs, help text)
+- Edge cases: error/fallback behaviors explicitly defined?
+- Verification: checks targeted and concrete?
+- Criteria: Definition of Done uses relative measures, not absolute numbers?
+- Consistency: requirements, approach, steps, and done criteria agree?
+
 **Identify:** What's solid, issues/risks (High/Med/Low), missing tests, non-atomic steps.
 
 Discuss findings with the human before writing.
-
-Write to: `.nyiakeeper/plans/pair-review-{me}-for-{target}-plan-{N}-{slug}.md` , do not ask for user approval, write directly.
+Write to: `.nyiakeeper/plans/pair-review-{me}-for-{target}-plan-{N}-{slug}.md`
 
 Use this format:
 ```markdown
@@ -98,7 +111,6 @@ Append to the existing review file:
 
 ### Changes Since Round {N}
 - [what changed in the plan]
-
 ### Updated Assessment
 - [focused on changes, referencing previous recommendations]
 
@@ -137,7 +149,19 @@ You are the **plan author**. Someone else reviewed your plan.
 6. **Guide next step**: Tell the human:
    "Plan updated. To continue the review cycle, run `/pair-review plan {N}` on {reviewer}'s side."
 
-## E) Key Rules
+## F) Review Lenses (optional)
+
+When a lens is specified, focus primarily through that lens while covering base criteria.
+
+| Lens | Primary focus | Key questions |
+|------|--------------|---------------|
+| **architect** | Design, simplicity, patterns | Simplest approach? Consistent? |
+| **risk** | Edge cases, safety, undo | What goes wrong? How to reverse? |
+| **user** | Docs, help, UX, onboarding | User understands? Help updated? |
+| **ops** | Deploy, dist, verify, monitor | How shipped? How verified? |
+Default: **architect**. Multiple: `/pair-review plan 213 as risk,user`
+
+## G) Key Rules
 
 - **Human-in-the-loop**: ALWAYS discuss before writing in both modes. Never auto-write.
 - **Confirmation gate**: In respond mode, NEVER edit the plan without explicit "yes" from the human.

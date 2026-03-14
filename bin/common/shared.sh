@@ -676,14 +676,48 @@ get_docker_registry() {
     echo "${NYIA_REGISTRY:-ghcr.io/kaizendofr}"
 }
 
+# Resolve the Docker image tag to use for runtime images.
+# Channel model (Plan 192):
+#   - NYIA_IMAGE_TAG env var: explicit override (highest priority)
+#   - NYIA_CHANNEL=alpha     -> use :alpha tag (manually promoted channel)
+#   - NYIA_CHANNEL=latest    -> use :latest tag (newest published)
+#   - default                -> :latest (same as "latest" channel)
+# This function does NOT apply to local dev builds (handled by get_docker_registry).
+_get_runtime_image_tag() {
+    # Explicit override wins (for testing or exact version pulls)
+    if [[ -n "${NYIA_IMAGE_TAG:-}" ]]; then
+        echo "$NYIA_IMAGE_TAG"
+        return
+    fi
+
+    local channel="${NYIA_CHANNEL:-}"
+
+    # If no channel env var, read from state file
+    if [[ -z "$channel" ]]; then
+        local _config_root="${XDG_CONFIG_HOME:-$HOME/.config}/nyiakeeper"
+        local _channel_file="$_config_root/CHANNEL"
+        if [[ -f "$_channel_file" ]]; then
+            channel=$(tr -d '[:space:]' < "$_channel_file" | head -1)
+        fi
+    fi
+
+    case "${channel:-latest}" in
+        alpha)   echo "alpha" ;;
+        latest)  echo "latest" ;;
+        *)       echo "latest" ;;  # unknown channel defaults to latest
+    esac
+}
+
 # Get full image name with registry prefix
 get_image_name() {
     local assistant="$1"
     local registry=$(get_docker_registry)
+    local image_tag
+    image_tag=$(_get_runtime_image_tag)
 
     if [[ -n "$registry" ]]; then
         # Registry: keep nyiakeeper- prefix (matches GHCR naming)
-        echo "${registry}/nyiakeeper-${assistant}:latest"
+        echo "${registry}/nyiakeeper-${assistant}:${image_tag}"
     else
         # Local: no prefix (clean names for dev)
         echo "nyiakeeper/${assistant}:latest"
@@ -715,10 +749,12 @@ get_flavor_image_name() {
 
     local registry=$(get_docker_registry)
     local flavor_name="${assistant}-${flavor}"
+    local image_tag
+    image_tag=$(_get_runtime_image_tag)
 
     if [[ -n "$registry" ]]; then
-        # Registry: always use :latest (CI/CD handles versioning)
-        echo "${registry}/nyiakeeper-${flavor_name}:latest"
+        # Registry: use channel-aware tag (matches channel model, Plan 192)
+        echo "${registry}/nyiakeeper-${flavor_name}:${image_tag}"
     elif [[ "$dev_mode" == "true" ]]; then
         # Dev mode: branch-tagged
         local branch=$(sanitize_branch_name "$(get_current_branch)")
@@ -858,19 +894,21 @@ resolve_flavor_image() {
             print_error "Invalid flavor name: $flavor"
             return 1
         fi
-        
+
         # Build flavor image name with registry support
         local registry=$(get_docker_registry)
+        local image_tag
+        image_tag=$(_get_runtime_image_tag)
         local flavor_image
-        
+
         if [[ -n "$registry" ]]; then
-            # Use registry with flavor
-            flavor_image="${registry}/nyiakeeper-${assistant_name}-${flavor}:latest"
+            # Use registry with channel-aware tag (Plan 192)
+            flavor_image="${registry}/nyiakeeper-${assistant_name}-${flavor}:${image_tag}"
         else
             # Local image with flavor
             flavor_image="nyiakeeper/${assistant_name}-${flavor}:latest"
         fi
-        
+
         echo "$flavor_image"
         return 0
     fi
