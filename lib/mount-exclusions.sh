@@ -111,8 +111,11 @@ get_user_exclusion_patterns() {
         
         # If line ends with /, it's a directory pattern - skip it here
         [[ "$line" =~ /$ ]] && continue
-        
-        # Output the pattern
+
+        # Skip path patterns (containing /) — handled by get_user_exclusion_file_paths()
+        [[ "$line" == */* ]] && continue
+
+        # Output the pattern (basename only)
         echo "$line"
     done < "$exclusions_file"
 }
@@ -138,9 +141,60 @@ get_user_exclusion_dirs() {
         
         # Only process lines ending with / (directory patterns)
         if [[ "$line" =~ /$ ]]; then
-            # Remove trailing slash for consistency
-            echo "${line%/}"
+            local dir_name="${line%/}"
+            # Skip path-based dir patterns (containing /) — handled by get_user_exclusion_dir_paths()
+            [[ "$dir_name" == */* ]] && continue
+            # Output basename dir pattern
+            echo "$dir_name"
         fi
+    done < "$exclusions_file"
+}
+
+# Get user-defined file exclusion patterns that contain path separators.
+# These patterns require `find -path` instead of `find -name`.
+# Examples: config/database.yml, config/*.yml, docs/internal/secrets.key
+get_user_exclusion_file_paths() {
+    local project_path="${1:-$(pwd)}"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
+
+    [[ -f "$exclusions_file" ]] || return 0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" =~ ^[[:space:]]*! ]] && continue
+        line=$(echo "$line" | xargs)
+        [[ -z "$line" ]] && continue
+        # Skip directory patterns (trailing /)
+        [[ "$line" =~ /$ ]] && continue
+        # Only return patterns that contain a path separator
+        [[ "$line" == */* ]] || continue
+        echo "$line"
+    done < "$exclusions_file"
+}
+
+# Get user-defined directory exclusion patterns that contain path separators.
+# These patterns require `find -path` on `-type d` instead of `find -name`.
+# Examples: internal-docs/secrets/, config/private/
+# Strips trailing / for consistency with find -path.
+get_user_exclusion_dir_paths() {
+    local project_path="${1:-$(pwd)}"
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
+
+    [[ -f "$exclusions_file" ]] || return 0
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" =~ ^[[:space:]]*! ]] && continue
+        line=$(echo "$line" | xargs)
+        [[ -z "$line" ]] && continue
+        # Only directory patterns (trailing /)
+        [[ "$line" =~ /$ ]] || continue
+        local dir_name="${line%/}"
+        # Only return patterns that contain a path separator (after stripping trailing /)
+        [[ "$dir_name" == */* ]] || continue
+        echo "$dir_name"
     done < "$exclusions_file"
 }
 
@@ -741,6 +795,42 @@ create_volume_args() {
             fi
         fi
 
+        # User-defined directory path patterns (containing /, need find -path)
+        local user_dir_paths=$(get_user_exclusion_dir_paths "$project_path")
+        if [[ -n "$user_dir_paths" ]]; then
+            print_verbose "User directory path patterns: $user_dir_paths"
+            local -a user_dir_path_expr=()
+            while IFS= read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+                [[ ${#user_dir_path_expr[@]} -gt 0 ]] && user_dir_path_expr+=("-o")
+                user_dir_path_expr+=("-path" "*/$pattern")
+            done <<< "$user_dir_paths"
+
+            if [[ ${#user_dir_path_expr[@]} -gt 0 ]]; then
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$project_path/}"
+                    if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                        print_verbose "Skipping directory (parent already excluded): $rel_path"
+                        continue
+                    fi
+                    if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                        continue
+                    fi
+                    if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                        print_verbose "Override: keeping directory visible: $rel_path"
+                        continue
+                    fi
+                    scanned_excluded_dirs+=("$rel_path")
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_path/$rel_path:ro")
+                    print_verbose "Excluding directory (user path): $rel_path"
+                done < <(find "$project_path" -maxdepth "$max_depth" -type d \( "${user_dir_path_expr[@]}" \) -print0 2>/dev/null)
+            fi
+        fi
+
+        # Dedup tracking for files — prevents duplicate mounts when user path patterns
+        # overlap with built-in basename patterns (e.g. config/credentials.json + credentials.json)
+        declare -A seen_excluded_files=()
+
         # Second: scan files, skip if under excluded directory
         local patterns=$(get_exclusion_patterns "$project_path")
         print_verbose "Exclusion patterns: $patterns"
@@ -775,6 +865,8 @@ create_volume_args() {
                     continue
                 fi
 
+                # Dedup: track to prevent duplicate mounts from overlapping user path patterns
+                seen_excluded_files["$rel_path"]=1
                 VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
                 print_verbose "Excluding file: $rel_path"
             done < <(find "$project_path" -maxdepth "$max_depth" \
@@ -783,7 +875,48 @@ create_volume_args() {
                    -o -name target \) -prune \
                 -o -type f \( "${file_find_expr[@]}" \) -print0 2>/dev/null)
         fi
-        
+
+        # User-defined file path patterns (containing /, need find -path)
+        local user_file_paths=$(get_user_exclusion_file_paths "$project_path")
+        if [[ -n "$user_file_paths" ]]; then
+            print_verbose "User file path patterns: $user_file_paths"
+            local -a user_file_path_expr=()
+            while IFS= read -r pattern; do
+                [[ -z "$pattern" ]] && continue
+                [[ ${#user_file_path_expr[@]} -gt 0 ]] && user_file_path_expr+=("-o")
+                user_file_path_expr+=("-path" "*/$pattern")
+            done <<< "$user_file_paths"
+
+            if [[ ${#user_file_path_expr[@]} -gt 0 ]]; then
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$project_path/}"
+                    if is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                        continue
+                    fi
+                    if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                        print_verbose "Skipping file (parent dir excluded): $rel_path"
+                        continue
+                    fi
+                    if [[ ${#file_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${file_overrides[@]}"; then
+                        print_verbose "Override: keeping file visible: $rel_path"
+                        continue
+                    fi
+                    # Dedup: skip if already excluded by basename pattern
+                    if [[ -n "${seen_excluded_files[$rel_path]+x}" ]]; then
+                        print_verbose "Skipping file (already excluded by basename): $rel_path"
+                        continue
+                    fi
+                    seen_excluded_files["$rel_path"]=1
+                    VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_path/$rel_path:ro")
+                    print_verbose "Excluding file (user path): $rel_path"
+                done < <(find "$project_path" -maxdepth "$max_depth" \
+                    \( -name node_modules -o -name vendor -o -name site-packages \
+                       -o -name __pycache__ -o -name .venv -o -name venv \
+                       -o -name target \) -prune \
+                    -o -type f \( "${user_file_path_expr[@]}" \) -print0 2>/dev/null)
+            fi
+        fi
+
         # KISS: Write cache for next time (simple approach)
         if declare -f write_exclusions_cache >/dev/null 2>&1; then
             # Build simple arrays from VOLUME_ARGS for caching
@@ -999,6 +1132,42 @@ append_repo_volume_args() {
         fi
     fi
 
+    # === Phase 3b: User-defined directory path patterns (containing /) ===
+    local user_dir_paths
+    user_dir_paths=$(get_user_exclusion_dir_paths "$repo_path")
+    if [[ -n "$user_dir_paths" ]]; then
+        print_verbose "Repo user directory path patterns: $user_dir_paths"
+        local -a user_dir_path_expr=()
+        while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            [[ ${#user_dir_path_expr[@]} -gt 0 ]] && user_dir_path_expr+=("-o")
+            user_dir_path_expr+=("-path" "*/$pattern")
+        done <<< "$user_dir_paths"
+
+        if [[ ${#user_dir_path_expr[@]} -gt 0 ]]; then
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$repo_path/}"
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping directory (parent already excluded) in repo: $rel_path"
+                    continue
+                fi
+                if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                    continue
+                fi
+                if [[ ${#dir_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${dir_overrides[@]}"; then
+                    print_verbose "Override: keeping directory visible in repo: $rel_path"
+                    continue
+                fi
+                scanned_excluded_dirs+=("$rel_path")
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-dir:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding directory (user path) in repo: $rel_path"
+            done < <(find "$repo_path" -maxdepth "$max_depth" -type d \( "${user_dir_path_expr[@]}" \) -print0 2>/dev/null)
+        fi
+    fi
+
+    # Dedup tracking for files in workspace mode
+    declare -A seen_excluded_files=()
+
     # === Phase 4: File exclusions (get_exclusion_patterns) ===
     # Uses the full built-in + user-defined pattern set, same as create_volume_args()
     local patterns
@@ -1034,6 +1203,7 @@ append_repo_volume_args() {
                 continue
             fi
 
+            seen_excluded_files["$rel_path"]=1
             VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
             print_verbose "Excluding file in repo: $rel_path"
         done < <(find "$repo_path" -maxdepth "$max_depth" \
@@ -1041,5 +1211,46 @@ append_repo_volume_args() {
                -o -name __pycache__ -o -name .venv -o -name venv \
                -o -name target \) -prune \
             -o -type f \( "${file_find_expr[@]}" \) -print0 2>/dev/null)
+    fi
+
+    # === Phase 4b: User-defined file path patterns (containing /) ===
+    local user_file_paths
+    user_file_paths=$(get_user_exclusion_file_paths "$repo_path")
+    if [[ -n "$user_file_paths" ]]; then
+        print_verbose "Repo user file path patterns: $user_file_paths"
+        local -a user_file_path_expr=()
+        while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            [[ ${#user_file_path_expr[@]} -gt 0 ]] && user_file_path_expr+=("-o")
+            user_file_path_expr+=("-path" "*/$pattern")
+        done <<< "$user_file_paths"
+
+        if [[ ${#user_file_path_expr[@]} -gt 0 ]]; then
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$repo_path/}"
+                if is_nyiakeeper_system_path "$rel_path" "$repo_path" 2>/dev/null; then
+                    continue
+                fi
+                if is_path_under_excluded_dir "$rel_path" "${scanned_excluded_dirs[@]}"; then
+                    print_verbose "Skipping file (parent dir excluded) in repo: $rel_path"
+                    continue
+                fi
+                if [[ ${#file_overrides[@]} -gt 0 ]] && is_path_overridden "$rel_path" "${file_overrides[@]}"; then
+                    print_verbose "Override: keeping file visible in repo: $rel_path"
+                    continue
+                fi
+                if [[ -n "${seen_excluded_files[$rel_path]+x}" ]]; then
+                    print_verbose "Skipping file (already excluded by basename) in repo: $rel_path"
+                    continue
+                fi
+                seen_excluded_files["$rel_path"]=1
+                VOLUME_ARGS+=("-v" "/tmp/nyia-excluded-file.txt:$container_subpath/$rel_path:ro")
+                print_verbose "Excluding file (user path) in repo: $rel_path"
+            done < <(find "$repo_path" -maxdepth "$max_depth" \
+                \( -name node_modules -o -name vendor -o -name site-packages \
+                   -o -name __pycache__ -o -name .venv -o -name venv \
+                   -o -name target \) -prune \
+                -o -type f \( "${user_file_path_expr[@]}" \) -print0 2>/dev/null)
+        fi
     fi
 }

@@ -200,7 +200,49 @@ exclusions_list() {
                 fi
             done < <(find "$project_path" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
         done < <(get_exclusion_dirs "$project_path" | tr ' ' '\n')
-        
+
+        # Process user-defined file path patterns (containing /) using find -path
+        while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$project_path/}"
+                if declare -f is_nyiakeeper_system_path >/dev/null 2>&1 && is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                    if [[ -z "${system_files[$rel_path]:-}" ]]; then
+                        system_files["$rel_path"]=1
+                        system_files_count=$((system_files_count + 1))
+                        SCAN_SYSTEM_FILES+=("$rel_path")
+                    fi
+                else
+                    if [[ -z "${excluded_files[$rel_path]:-}" ]]; then
+                        excluded_files["$rel_path"]=1
+                        excluded_files_count=$((excluded_files_count + 1))
+                        SCAN_EXCLUDED_FILES+=("$rel_path")
+                    fi
+                fi
+            done < <(find "$project_path" -maxdepth "$max_depth" -type f -path "*/$pattern" -print0 2>/dev/null)
+        done < <(get_user_exclusion_file_paths "$project_path")
+
+        # Process user-defined directory path patterns (containing /) using find -path
+        while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            while IFS= read -r -d '' match; do
+                local rel_path="${match#$project_path/}"
+                if declare -f is_nyiakeeper_system_path >/dev/null 2>&1 && is_nyiakeeper_system_path "$rel_path" "$project_path"; then
+                    if [[ -z "${system_dirs[$rel_path]:-}" ]]; then
+                        system_dirs["$rel_path"]=1
+                        system_dirs_count=$((system_dirs_count + 1))
+                        SCAN_SYSTEM_DIRS+=("$rel_path")
+                    fi
+                else
+                    if [[ -z "${excluded_dirs[$rel_path]:-}" ]]; then
+                        excluded_dirs["$rel_path"]=1
+                        excluded_dirs_count=$((excluded_dirs_count + 1))
+                        SCAN_EXCLUDED_DIRS+=("$rel_path")
+                    fi
+                fi
+            done < <(find "$project_path" -maxdepth "$max_depth" -type d -path "*/$pattern" -print0 2>/dev/null)
+        done < <(get_user_exclusion_dir_paths "$project_path")
+
         # Write results to cache for next time
         write_exclusions_cache "$project_path"
     fi
@@ -339,16 +381,37 @@ exclusions_status() {
 
 # Show all exclusion patterns
 exclusions_patterns() {
-    print_header "🔍 Hardcoded Exclusion Patterns"
+    local project_path
+    project_path=$(get_project_path "${1:-}")
+
+    print_header "🔍 Exclusion Patterns"
     echo "==============================="
     echo ""
-    echo "File patterns:"
-    echo "$(get_exclusion_patterns)" | tr ' ' '\n' | sort | sed 's/^/  • /'
+    echo "Built-in file patterns (basename):"
+    echo "$(get_exclusion_patterns "$project_path")" | tr ' ' '\n' | sort | sed 's/^/  • /'
     echo ""
-    echo "Directory patterns:"
-    echo "$(get_exclusion_dirs)" | tr ' ' '\n' | sort | sed 's/^/  • /'
+    echo "Built-in directory patterns (basename):"
+    echo "$(get_exclusion_dirs "$project_path")" | tr ' ' '\n' | sort | sed 's/^/  • /'
+
+    # Show user-defined path patterns if any exist
+    local user_file_paths
+    user_file_paths=$(get_user_exclusion_file_paths "$project_path")
+    local user_dir_paths
+    user_dir_paths=$(get_user_exclusion_dir_paths "$project_path")
+
+    if [[ -n "$user_file_paths" || -n "$user_dir_paths" ]]; then
+        echo ""
+        echo "User-defined path patterns (from exclusions.conf):"
+        if [[ -n "$user_file_paths" ]]; then
+            echo "$user_file_paths" | sort | sed 's/^/  • /'
+        fi
+        if [[ -n "$user_dir_paths" ]]; then
+            echo "$user_dir_paths" | sort | sed 's|^|  • |;s|$|/|'
+        fi
+    fi
+
     echo ""
-    print_info "These patterns are hardcoded for security"
+    print_info "Built-in patterns are hardcoded for security"
     print_info "To modify: edit lib/mount-exclusions.sh functions"
     print_info "To override: use .nyiakeeper/exclusions.conf with ! prefix"
 }
@@ -384,9 +447,14 @@ exclusions_init() {
         print_info "Exclusions already initialized"
         echo "Current config: .nyiakeeper/exclusions.conf"
         
-        # Count user-defined patterns
-        local user_pattern_count=$(grep -v '^#' "$exclusions_file" 2>/dev/null | grep -v '^[[:space:]]*$' | wc -l)
-        echo "User-defined patterns: $user_pattern_count"
+        # Count user-defined patterns (exclude ! override lines from pattern count)
+        local user_pattern_count=$(grep -v '^#' "$exclusions_file" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
+        local user_override_count=$(grep -v '^#' "$exclusions_file" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -c '^[[:space:]]*!' || true)
+        if [[ "$user_override_count" -gt 0 ]]; then
+            echo "User-defined patterns: $user_pattern_count (+$user_override_count overrides)"
+        else
+            echo "User-defined patterns: $user_pattern_count"
+        fi
         
         # Show actual exclusion effectiveness with quick scan and change detection
         echo ""
@@ -552,18 +620,21 @@ EOF
 # Nyia Keeper Mount Exclusions Configuration
 # Project-specific patterns to exclude from Docker mounts
 #
-# Patterns support glob syntax: * ? []
-# Paths are relative to project root
+# Two pattern types:
+#   Basename patterns (no /): matched with find -name (case-insensitive on macOS)
+#   Path patterns (with /):   matched with find -path (case-sensitive on all platforms)
 #
 # Examples:
-# .env.local              # Exclude specific file
-# secrets/                # Exclude entire directory
-# *.backup                # Exclude by extension
-# internal-docs/**/*.md   # Exclude nested files
+# .env.local              # Basename: exclude file by name anywhere
+# secrets/                # Basename: exclude directory by name anywhere
+# *.backup                # Basename: exclude by extension
+# config/database.yml     # Path: exclude exact relative path
+# config/*.yml            # Path: exclude with glob in path
+# docs/internal/          # Path: exclude specific directory path
 #
 # Override global exclusions with ! prefix:
-# !.env.example          # Force include this file
-# !docs/security.md      # Force include even if docs/ excluded
+# !.env.example           # Force include this file
+# !config/database.yml    # Force include specific path
 #
 # Note: Global security patterns are always applied first
 # This file adds additional project-specific exclusions
