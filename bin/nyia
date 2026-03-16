@@ -20,6 +20,10 @@ CONFIG_DIR="$NYIAKEEPER_HOME/config"
 _auto_update_lib="$script_dir/../lib/nyiakeeper/auto-update.sh"
 [[ -f "$_auto_update_lib" ]] && source "$_auto_update_lib" 2>/dev/null || true
 
+# Source update subcommands library (Plan 213)
+_update_cmds_lib="$script_dir/../lib/nyiakeeper/update-commands.sh"
+[[ -f "$_update_cmds_lib" ]] && source "$_update_cmds_lib" 2>/dev/null || true
+
 # === DISPATCHER COMMANDS ===
 list_available_assistants() {
     echo "Available Nyia Keeper Assistants:"
@@ -311,36 +315,22 @@ case "${1:-help}" in
         clean_old_images
         ;;
     update)
-        if ! type perform_update &>/dev/null; then
-            echo "Error: Auto-update library not available." >&2
-            exit 1
-        fi
         shift
-        # --list is info-only, no TTY needed
-        if [[ "${1:-}" == "--list" ]]; then
-            list_available_versions
-            exit $?
-        fi
-        # All other update commands require interactive terminal
-        if [[ ! -t 0 ]] && [[ ! -t 1 ]]; then
-            echo "Update requires an interactive terminal."
-            echo "To update manually, download the latest release from:"
-            echo "  https://github.com/KaizendoFr/nyiakeeper/releases"
+        if type handle_update_command &>/dev/null; then
+            handle_update_command "$@"
+        else
+            echo "Error: Update commands library not available." >&2
             exit 1
         fi
-        cli_targeted_update "${1:-}"
         ;;
     rollback)
-        # Rollback to previous version
-        if [[ ! -t 0 ]] && [[ ! -t 1 ]]; then
-            echo "Rollback requires an interactive terminal."
+        shift
+        if type handle_update_command &>/dev/null; then
+            handle_update_command "rollback" "$@"
+        else
+            echo "Error: Update commands library not available." >&2
             exit 1
         fi
-        if ! type perform_rollback &>/dev/null; then
-            echo "Error: Auto-update library not available." >&2
-            exit 1
-        fi
-        perform_rollback
         ;;
     exclusions)
         # Handle exclusions command
@@ -383,10 +373,18 @@ case "${1:-help}" in
         echo "  nyia config <command>       # Configure system settings"
         echo "  nyia clean                  # Clean old Docker images"
         echo "  nyia exclusions [command]   # Manage file exclusions"
-        echo "  nyia update [version]       # Update to latest or specific version"
-        echo "  nyia update --list          # List available versions"
+        echo "  nyia update <subcommand>    # Update management"
         echo "  nyia rollback               # Rollback to previous version"
         echo "  nyia help                   # Show this help"
+        echo ""
+        echo "UPDATE MANAGEMENT:"
+        echo "  nyia update status          # Show version, channel, last check"
+        echo "  nyia update list            # Show channels and recent releases"
+        echo "  nyia update check           # Check for updates"
+        echo "  nyia update install [target] # Install update (channel or version)"
+        echo "  nyia update rollback        # Rollback to previous version"
+        echo "  nyia update [version]       # Install specific version (shortcut)"
+        echo "  nyia update --list          # List versions (backward compat)"
         echo ""
         echo "ASSISTANTS:"
         echo "  nyia-claude [options]       # Anthropic Claude (advanced reasoning)"

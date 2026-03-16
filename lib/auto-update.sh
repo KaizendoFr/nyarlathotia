@@ -333,7 +333,7 @@ list_available_versions() {
     fi
 
     echo ""
-    echo "To switch: nyia update <version>"
+    echo "To switch: nyia update install <version>"
 }
 
 # --- CLI-targeted Update Wrapper ---
@@ -896,7 +896,7 @@ check_for_updates_if_due() {
             # Pass the installed channel so perform_update preserves channel state.
             perform_update "$latest_version" "$installed_channel"
         else
-            echo "Update skipped. Run 'nyia update' to update later."
+            echo "Update skipped. Run 'nyia update install' to update later."
         fi
     fi
 

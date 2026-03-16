@@ -187,13 +187,15 @@ get_dispatcher_arg_desc() {
         "list") echo "List all available assistants" ;;
         "status") echo "Show global Nyia Keeper status" ;;
         "exclusions") echo "Manage mount exclusions for security" ;;
+        "update") echo "Update management (status, list, check, install)" ;;
+        "rollback") echo "Rollback to previous version" ;;
         *) echo "" ;;
     esac
 }
 
 # Get all dispatcher arguments (for iteration)
 get_dispatcher_args() {
-    echo "config list status exclusions"
+    echo "config list status exclusions update rollback"
 }
 
 # === HELP SYSTEM ===
@@ -462,7 +464,7 @@ parse_dispatcher_args() {
                     exit 1
                 fi
                 ;;
-            config|list|status|clean|exclusions|help)
+            config|list|status|clean|exclusions|update|rollback|help)
                 COMMAND="$1"
                 shift
                 REMAINING_ARGS=("$@")

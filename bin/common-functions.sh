@@ -323,8 +323,35 @@ ensure_project_prompts_directory() {
     init_shared_structure "$project_path" "quiet"
 }
 
+# Ensure .nyiakeeper/private/ is listed in the project's .gitignore (Plan 201)
+# Only appends, never removes lines. Safe to call multiple times (dedup check).
+# Creates .gitignore if it does not exist.
+ensure_private_in_gitignore() {
+    local project_path="$1"
+    local gitignore="$project_path/.gitignore"
+    local entry=".nyiakeeper/private/"
+
+    # Check if entry already present (exact line match)
+    if [[ -f "$gitignore" ]]; then
+        if grep -qFx "$entry" "$gitignore" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    # Append with a trailing newline to avoid joining with last line
+    # If file exists but doesn't end with newline, add one first
+    if [[ -f "$gitignore" ]] && [[ -s "$gitignore" ]]; then
+        # Ensure file ends with newline before appending
+        if [[ "$(tail -c 1 "$gitignore" 2>/dev/null | wc -l)" -eq 0 ]]; then
+            printf '\n' >> "$gitignore"
+        fi
+    fi
+
+    printf '%s\n' "$entry" >> "$gitignore"
+}
+
 # Initialize .nyiakeeper/shared/ and .nyiakeeper/private/ project structure
-# Non-destructive: does not move existing files or modify .gitignore
+# Auto-adds .nyiakeeper/private/ to .gitignore if not already present (Plan 201)
 # Usage: init_shared_structure <project_path> [quiet]
 #   quiet mode: create dirs silently (used by auto-init in ensure_project_prompts_directory)
 #   verbose mode (default): print summary and gitignore guidance
@@ -359,6 +386,10 @@ EOF
         created=$((created + 1))
     fi
 
+    # Auto-add .nyiakeeper/private/ to .gitignore (Plan 201)
+    # Only appends, never removes; checks for duplicates before writing
+    ensure_private_in_gitignore "$project_path"
+
     # In quiet mode, skip all output (used by auto-init)
     if [[ "$mode" == "quiet" ]]; then
         return 0
@@ -379,21 +410,6 @@ EOF
     echo ""
     echo "  Private (git-ignored):"
     echo "    $private_base/          — local credentials, context"
-    echo ""
-
-    # Print gitignore guidance
-    print_info "Add the following to your .gitignore:"
-    echo ""
-    echo "  # Nyia Keeper — private (never commit)"
-    echo "  .nyiakeeper/private/"
-    echo "  .claude/"
-    echo "  .codex/"
-    echo "  .vibe/"
-    echo "  .opencode/"
-    echo "  .gemini/"
-    echo ""
-    echo "  # Nyia Keeper — shared (commit these)"
-    echo "  # .nyiakeeper/shared/ is safe to commit"
     echo ""
 }
 

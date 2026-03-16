@@ -143,14 +143,18 @@ main() {
         exit 0
     fi
 
-    # Handle list agents mode (info-only, host-side resolution) - Plan 149
+    # Handle list agents mode (info-only, host-side resolution) - Plan 149, updated Plan 201
     if [[ "$LIST_AGENTS" == "true" ]]; then
         local agent_lib="$script_dir/../lib/agent-resolution.sh"
         if [[ -f "$agent_lib" ]]; then
             source "$agent_lib"
             local nyiakeeper_home
             nyiakeeper_home=$(get_nyiakeeper_home)
-            list_agents "$ASSISTANT_CLI" "$PROJECT_PATH" "$nyiakeeper_home"
+            local team_dir=""
+            if declare -f resolve_team_dir >/dev/null 2>&1; then
+                team_dir=$(resolve_team_dir 2>/dev/null) || true
+            fi
+            list_agents "$ASSISTANT_CLI" "$PROJECT_PATH" "$nyiakeeper_home" "$team_dir"
         else
             echo "Agent resolution library not found" >&2
         fi

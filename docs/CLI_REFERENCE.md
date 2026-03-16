@@ -321,6 +321,69 @@ Cannot use protected branch as work branch: 'main'
 
 ---
 
+## Update Management
+
+Manage Nyia Keeper installation updates and rollbacks.
+
+### Subcommands
+
+| Subcommand | Description |
+|-----------|-------------|
+| `nyia update status` | Show installed version, channel, NYIAKEEPER_HOME, and last check time |
+| `nyia update list` | Show available channels (latest, alpha) and recent releases |
+| `nyia update check` | Manual check for updates, shows release notes if available |
+| `nyia update install [target]` | Install update by channel name (`alpha`, `latest`) or version tag |
+| `nyia update rollback` | Rollback to previous version (same as `nyia rollback`) |
+| `nyia update help` | Show update subcommand help |
+
+### Channel Management
+
+Nyia Keeper supports two update channels:
+
+- **latest** - Stable releases (default channel)
+- **alpha** - Pre-release builds for early adopters
+
+Switch channels with:
+```bash
+nyia update install alpha     # Switch to alpha channel
+nyia update install latest    # Switch to latest (stable) channel
+```
+
+### Backward Compatibility
+
+Previous syntax continues to work:
+
+| Old Syntax | Equivalent New Syntax |
+|-----------|----------------------|
+| `nyia update` | `nyia update install` |
+| `nyia update v0.1.0-alpha.50` | `nyia update install v0.1.0-alpha.50` |
+| `nyia update --list` | `nyia update list` |
+| `nyia rollback` | `nyia update rollback` |
+
+### Examples
+
+```bash
+# Check current status
+nyia update status
+
+# Check if an update is available
+nyia update check
+
+# List all available versions
+nyia update list
+
+# Install latest for current channel
+nyia update install
+
+# Install specific version
+nyia update install v0.1.0-alpha.55
+
+# Rollback after a bad update
+nyia update rollback
+```
+
+---
+
 ## Related Documentation
 
 - [BRANCH_MANAGEMENT.md](BRANCH_MANAGEMENT.md) - Detailed branch workflow guide
