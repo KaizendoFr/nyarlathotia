@@ -384,6 +384,45 @@ nyia update rollback
 
 ---
 
+## Shell Auto-Completion
+
+Enable tab-completion for `nyia` and all `nyia-*` assistant commands.
+
+### Setup
+
+```bash
+# Bash — add to ~/.bashrc
+eval "$(nyia completions bash)"
+
+# Zsh — add to ~/.zshrc
+eval "$(nyia completions zsh)"
+```
+
+### What Completes
+
+| Context | Completions |
+|---------|-------------|
+| `nyia <TAB>` | `config`, `exclusions`, `update`, `list`, `status`, `clean`, `completions`, `rollback`, `help` |
+| `nyia config <TAB>` | `view`, `list`, `dump`, `get`, `project`, `global`, `help` |
+| `nyia exclusions <TAB>` | `list`, `test`, `status`, `patterns`, `lockdown`, `help` |
+| `nyia update <TAB>` | `status`, `list`, `check`, `install`, `rollback`, `help` |
+| `nyia completions <TAB>` | `bash`, `zsh` |
+| `nyia-claude <TAB>` | All runtime flags (`--status`, `--login`, `--shell`, `--rag`, etc.) |
+
+All `nyia-*` assistant commands (`nyia-claude`, `nyia-gemini`, `nyia-codex`, `nyia-opencode`, `nyia-vibe`) share the same flag completions.
+
+### Subcommand
+
+| Command | Description |
+|---------|-------------|
+| `nyia completions bash` | Output Bash completion script to stdout |
+| `nyia completions zsh` | Output Zsh completion script to stdout |
+| `nyia completions` | Show usage and setup instructions |
+
+Setup instructions are printed to stderr only when the terminal is interactive, so `eval` usage in shell RC files stays silent.
+
+---
+
 ## Related Documentation
 
 - [BRANCH_MANAGEMENT.md](BRANCH_MANAGEMENT.md) - Detailed branch workflow guide

@@ -359,6 +359,51 @@ case "${1:-help}" in
         
         handle_exclusions_command "$@"
         ;;
+    completions)
+        # Output shell completion script to stdout
+        shift
+        completions_dir="$(dirname "$(realpath "$0")")/../lib/completions"
+        shell_arg="${1:-}"
+        case "$shell_arg" in
+            bash)
+                if [[ -f "$completions_dir/nyia.bash" ]]; then
+                    cat "$completions_dir/nyia.bash"
+                    if [ -t 2 ]; then
+                        echo "" >&2
+                        echo "# To enable permanently, add to your ~/.bashrc:" >&2
+                        echo "#   eval \"\$(nyia completions bash)\"" >&2
+                    fi
+                else
+                    echo "Error: Bash completion script not found" >&2
+                    exit 1
+                fi
+                ;;
+            zsh)
+                if [[ -f "$completions_dir/nyia.zsh" ]]; then
+                    cat "$completions_dir/nyia.zsh"
+                    if [ -t 2 ]; then
+                        echo "" >&2
+                        echo "# To enable permanently, add to your ~/.zshrc:" >&2
+                        echo "#   eval \"\$(nyia completions zsh)\"" >&2
+                    fi
+                else
+                    echo "Error: Zsh completion script not found" >&2
+                    exit 1
+                fi
+                ;;
+            *)
+                echo "Usage: nyia completions <shell>"
+                echo ""
+                echo "Available shells:"
+                echo "  bash    Generate Bash completion script"
+                echo "  zsh     Generate Zsh completion script"
+                echo ""
+                echo "To enable auto-completion:"
+                echo "  Bash: eval \"\$(nyia completions bash)\""
+                echo "  Zsh:  eval \"\$(nyia completions zsh)\""
+                ;;
+        esac
+        ;;
     help|--help|-h)
         echo "Nyia Keeper Multi-Assistant Infrastructure"
         echo "AI-powered development assistants for your projects"
@@ -375,6 +420,7 @@ case "${1:-help}" in
         echo "  nyia exclusions [command]   # Manage file exclusions"
         echo "  nyia update <subcommand>    # Update management"
         echo "  nyia rollback               # Rollback to previous version"
+        echo "  nyia completions <shell>    # Generate shell auto-completion (bash, zsh)"
         echo "  nyia help                   # Show this help"
         echo ""
         echo "UPDATE MANAGEMENT:"
@@ -399,7 +445,7 @@ case "${1:-help}" in
         echo "  nyia config get <key>                # Get specific value"
         echo ""
         echo "EXCLUSIONS (Security):"
-        echo "  nyia exclusions init        # Create .nyiakeeper-exclude file"
+        echo "  nyia exclusions lockdown    # Scan project, generate exclude-everything config"
         echo "  nyia exclusions list        # Show excluded files/patterns"
         echo "  nyia exclusions status      # Check exclusion system status"
         echo ""

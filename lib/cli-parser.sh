@@ -189,13 +189,14 @@ get_dispatcher_arg_desc() {
         "exclusions") echo "Manage mount exclusions for security" ;;
         "update") echo "Update management (status, list, check, install)" ;;
         "rollback") echo "Rollback to previous version" ;;
+        "completions") echo "Generate shell auto-completion scripts (bash, zsh)" ;;
         *) echo "" ;;
     esac
 }
 
 # Get all dispatcher arguments (for iteration)
 get_dispatcher_args() {
-    echo "config list status exclusions update rollback"
+    echo "config list status exclusions update rollback completions"
 }
 
 # === HELP SYSTEM ===
@@ -464,7 +465,7 @@ parse_dispatcher_args() {
                     exit 1
                 fi
                 ;;
-            config|list|status|clean|exclusions|update|rollback|help)
+            config|list|status|clean|exclusions|update|rollback|completions|help)
                 COMMAND="$1"
                 shift
                 REMAINING_ARGS=("$@")
