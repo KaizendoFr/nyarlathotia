@@ -116,7 +116,8 @@ read_cached_exclusions() {
 exclusions_list() {
     local project_path
     project_path=$(get_project_path "$1")
-    
+
+    print_workspace_info_header "$project_path"
     print_header "📋 Files excluded in: $project_path"
     echo "============================================="
     
@@ -422,13 +423,17 @@ exclusions_list() {
         print_info "  Root: $excluded_files_count files, $excluded_dirs_count directories"
         print_info "  Repos: $ws_total_files files, $ws_total_dirs directories"
     fi
+
+    print_git_history_warning "$project_path"
 }
 
 # Test exclusions and show Docker volume arguments
 exclusions_test() {
     local project_path
     project_path=$(get_project_path "$1")
-    
+
+    print_workspace_info_header "$project_path"
+
     print_header "🧪 Testing exclusions for: $project_path"
     echo "=============================================="
     
@@ -510,13 +515,17 @@ exclusions_test() {
         echo ""
         print_success "Workspace test complete"
     fi
+
+    print_git_history_warning "$project_path"
 }
 
 # Show exclusions status
 exclusions_status() {
     local project_path
     project_path=$(get_project_path "$1")
-    
+
+    print_workspace_info_header "$project_path"
+
     print_header "🔍 Mount Exclusions Status"
     echo "=========================="
     echo ""
@@ -570,6 +579,8 @@ exclusions_status() {
             fi
         done
     fi
+
+    print_git_history_warning "$project_path"
 }
 
 # Show all exclusion patterns
@@ -577,6 +588,7 @@ exclusions_patterns() {
     local project_path
     project_path=$(get_project_path "${1:-}")
 
+    print_workspace_info_header "$project_path"
     print_header "🔍 Exclusion Patterns"
     echo "==============================="
     echo ""
@@ -684,6 +696,8 @@ exclusions_patterns() {
     print_info "Built-in patterns are hardcoded for security"
     print_info "Pattern rules: no '/' = anywhere, contains '/' = root-anchored"
     print_info "To override: use .nyiakeeper/exclusions.conf with ! prefix"
+
+    print_git_history_warning "$project_path"
 }
 
 # Initialize project-specific exclusions config
@@ -1077,6 +1091,342 @@ EOF
     fi
 }
 
+# === LOCKDOWN COMMAND ===
+
+# Directories to skip during lockdown scan (infrastructure, not project content)
+_LOCKDOWN_SKIP_DIRS=(".git" ".nyiakeeper" "node_modules" "__pycache__" ".venv" ".tox")
+
+# Known-safe directories (auto-whitelisted with !)
+_LOCKDOWN_SAFE_DIRS=(
+    # Source
+    "src" "lib" "app" "cmd" "pkg" "internal"
+    # Tests
+    "tests" "test" "spec" "__tests__"
+    # Docs
+    "docs" "doc"
+    # Config dirs
+    "scripts" "bin" "tools"
+)
+
+# Known-safe files (auto-whitelisted with !)
+_LOCKDOWN_SAFE_FILES=(
+    "README.md" "README.rst" "README.txt" "readme.md"
+    "LICENSE" "LICENSE.md" "LICENSE.txt" "license"
+    "CHANGELOG.md" "CHANGES.md"
+    "Makefile" "Dockerfile"
+    "docker-compose.yml" "docker-compose.yaml"
+    ".gitignore" ".dockerignore" ".editorconfig"
+    "package.json" "package-lock.json"
+    "Cargo.toml" "Cargo.lock"
+    "go.mod" "go.sum"
+    "pyproject.toml" "setup.py" "setup.cfg" "requirements.txt"
+    "Gemfile" "Gemfile.lock"
+    "tsconfig.json" "webpack.config.js" "vite.config.ts" "vite.config.js"
+    "composer.json" "composer.lock"
+)
+
+# Check if an entry is in the skip list
+_is_lockdown_skip() {
+    local name="$1"
+    local skip
+    for skip in "${_LOCKDOWN_SKIP_DIRS[@]}"; do
+        [[ "$name" == "$skip" ]] && return 0
+    done
+    return 1
+}
+
+# Check if a directory name is in the safe whitelist
+_is_safe_dir() {
+    local name="$1"
+    local safe
+    for safe in "${_LOCKDOWN_SAFE_DIRS[@]}"; do
+        [[ "$name" == "$safe" ]] && return 0
+    done
+    return 1
+}
+
+# Check if a file name is in the safe whitelist (case-insensitive for README/LICENSE)
+_is_safe_file() {
+    local name="$1"
+    local name_lower
+    name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+    local safe safe_lower
+    for safe in "${_LOCKDOWN_SAFE_FILES[@]}"; do
+        safe_lower=$(echo "$safe" | tr '[:upper:]' '[:lower:]')
+        [[ "$name_lower" == "$safe_lower" ]] && return 0
+    done
+    return 1
+}
+
+# Scan project root for lockdown (depth 1 only)
+# Sets: _LOCKDOWN_DIRS, _LOCKDOWN_FILES arrays
+scan_project_for_lockdown() {
+    local project_path="$1"
+    _LOCKDOWN_DIRS=()
+    _LOCKDOWN_FILES=()
+
+    local project_name
+    project_name=$(basename "$project_path")
+    echo "Scanning $project_name..."
+
+    local entry name
+    for entry in "$project_path"/*; do
+        [[ -e "$entry" ]] || continue
+        name=$(basename "$entry")
+        if [[ -d "$entry" ]]; then
+            _is_lockdown_skip "$name" && continue
+            _LOCKDOWN_DIRS+=("$name")
+        elif [[ -f "$entry" ]]; then
+            _LOCKDOWN_FILES+=("$name")
+        fi
+    done
+
+    # Also check dotfiles at root (except skip list)
+    for entry in "$project_path"/.[!.]*; do
+        [[ -e "$entry" ]] || continue
+        name=$(basename "$entry")
+        if [[ -d "$entry" ]]; then
+            _is_lockdown_skip "$name" && continue
+            _LOCKDOWN_DIRS+=("$name")
+        elif [[ -f "$entry" ]]; then
+            _LOCKDOWN_FILES+=("$name")
+        fi
+    done
+
+    echo "  Found ${#_LOCKDOWN_DIRS[@]} directories, ${#_LOCKDOWN_FILES[@]} files"
+}
+
+# Check workspace gate for write commands
+# Returns 0 if allowed to proceed, 1 if blocked
+check_workspace_gate() {
+    local project_path="$1"
+    local workspace_flag="${2:-false}"
+
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+
+    # Not a workspace — always allow
+    [[ ${#_WS_REPOS[@]} -eq 0 ]] && return 0
+
+    # Workspace with --workspace flag — allow
+    [[ "$workspace_flag" == "true" ]] && return 0
+
+    # Workspace without flag — block with helpful message
+    local repo_count=${#_WS_REPOS[@]}
+    echo ""
+    echo "  Workspace detected with $repo_count repos:"
+    local ri
+    for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+        local repo_name
+        repo_name=$(basename "${_WS_REPOS[ri]}")
+        local mode="${_WS_MODES[ri]:-rw}"
+        echo "    - $repo_name ($mode)"
+    done
+    echo ""
+    echo "  Add --workspace to lockdown all RW repos, or specify a single repo path:"
+    echo "    nyia exclusions lockdown --workspace"
+    echo "    nyia exclusions lockdown <repo-path>"
+    echo ""
+    return 1
+}
+
+# Print workspace info header for read commands
+print_workspace_info_header() {
+    local project_path="$1"
+
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+
+    [[ ${#_WS_REPOS[@]} -eq 0 ]] && return 0
+
+    local names=()
+    local ri
+    for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+        names+=("$(basename "${_WS_REPOS[ri]}")")
+    done
+    local name_list
+    name_list=$(IFS=', '; echo "${names[*]}")
+    echo "Workspace: ${#_WS_REPOS[@]} repos ($name_list)"
+}
+
+# Generate lockdown exclusions.conf for a single project
+_generate_lockdown_config() {
+    local project_path="$1"
+    local force_mode="${2:-false}"
+    local nyia_dir="$project_path/.nyiakeeper"
+    local exclusions_file="$nyia_dir/exclusions.conf"
+
+    # Ensure .nyiakeeper dir exists
+    mkdir -p "$nyia_dir"
+
+    # Backup existing file if --force
+    if [[ -f "$exclusions_file" ]] && [[ "$force_mode" == "true" ]]; then
+        local backup="$exclusions_file.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$exclusions_file" "$backup"
+        print_info "Backed up existing config to $(basename "$backup")"
+    elif [[ -f "$exclusions_file" ]] && [[ "$force_mode" != "true" ]]; then
+        print_info "Config already exists: .nyiakeeper/exclusions.conf (use --force to overwrite)"
+        return 0
+    fi
+
+    # Scan project
+    scan_project_for_lockdown "$project_path"
+
+    # Build the config file
+    local config=""
+    local today
+    today=$(date +%Y-%m-%d)
+
+    # Header
+    config+="# Nyia Keeper Exclusions — Generated by: nyia exclusions lockdown
+# Date: $today
+#
+# IMPORTANT: Mount exclusions protect the filesystem inside the container,
+# but files committed to git history remain accessible via git commands
+# (git show, git log -p, git cat-file, etc.).
+# See: docs/MOUNT_EXCLUSIONS.md — Git History Protection
+#
+# .git/ is mounted read-write for git operations.
+# Git history of excluded files may still be accessible.
+#
+# Review the ! overrides below and remove any that should stay excluded.
+"
+
+    # Section 1: Excluded directories
+    config+="
+# Excluded directories
+"
+    local dir
+    for dir in "${_LOCKDOWN_DIRS[@]}"; do
+        config+="/$dir/
+"
+    done
+
+    # Section 2: Excluded files
+    config+="
+# Excluded files
+"
+    local file
+    for file in "${_LOCKDOWN_FILES[@]}"; do
+        config+="/$file
+"
+    done
+
+    # Section 3: Auto-whitelisted safe entries
+    config+="
+# Auto-whitelisted (safe for AI access)
+# Review these overrides — remove any line to keep that entry excluded.
+"
+    local whitelist_count=0
+
+    for dir in "${_LOCKDOWN_DIRS[@]}"; do
+        if _is_safe_dir "$dir"; then
+            config+="!/$dir/
+"
+            whitelist_count=$((whitelist_count + 1))
+        fi
+    done
+
+    for file in "${_LOCKDOWN_FILES[@]}"; do
+        if _is_safe_file "$file"; then
+            config+="!/$file
+"
+            whitelist_count=$((whitelist_count + 1))
+        fi
+    done
+
+    # Write the config
+    echo -n "$config" > "$exclusions_file"
+
+    # Print summary
+    local total_excluded=$(( ${#_LOCKDOWN_DIRS[@]} + ${#_LOCKDOWN_FILES[@]} ))
+    local project_name
+    project_name=$(basename "$project_path")
+
+    echo ""
+    print_success "Lockdown complete for $project_name"
+    echo "  ${#_LOCKDOWN_DIRS[@]} directories excluded, ${#_LOCKDOWN_FILES[@]} files excluded"
+    echo "  $whitelist_count entries auto-whitelisted (review ! overrides in .nyiakeeper/exclusions.conf)"
+    echo "  Run 'nyia exclusions list' to see what's actually excluded"
+}
+
+# Main lockdown command
+exclusions_lockdown() {
+    local project_path=""
+    local force_mode="false"
+    local workspace_flag="false"
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --force)
+                force_mode="true"
+                shift
+                ;;
+            --workspace)
+                workspace_flag="true"
+                shift
+                ;;
+            *)
+                if [[ -z "$project_path" ]]; then
+                    project_path="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Get validated project path
+    project_path=$(get_project_path "$project_path")
+
+    # Workspace gate check
+    if ! check_workspace_gate "$project_path" "$workspace_flag"; then
+        return 1
+    fi
+
+    # Workspace mode: iterate RW repos
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]] && [[ "$workspace_flag" == "true" ]]; then
+        # Lockdown root project
+        _generate_lockdown_config "$project_path" "$force_mode"
+
+        # Lockdown each RW repo
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            local mode="${_WS_MODES[ri]:-rw}"
+            local repo_name
+            repo_name=$(basename "$repo")
+
+            [[ ! -d "$repo" ]] && continue
+
+            if [[ "$mode" == "ro" ]]; then
+                echo ""
+                print_info "Skipping $repo_name (read-only)"
+                continue
+            fi
+
+            echo ""
+            _generate_lockdown_config "$repo" "$force_mode"
+        done
+        return 0
+    fi
+
+    # Single project mode
+    _generate_lockdown_config "$project_path" "$force_mode"
+}
+
+# Print git history warning footer for git-backed projects
+print_git_history_warning() {
+    local project_path="$1"
+    if git -C "$project_path" rev-parse --git-dir >/dev/null 2>&1; then
+        echo ""
+        echo "Note: Files in git history may still be accessible via git commands."
+        echo "See: docs/MOUNT_EXCLUSIONS.md"
+    fi
+}
+
 # Show help for exclusions commands
 exclusions_help() {
     cat << 'EOF'
@@ -1090,47 +1440,59 @@ Usage:
   nyia --path <path> exclusions <command>    # Specify path as global option
 
 Commands:
-  list [path]         Show files/dirs that would be excluded
-  test [path]         Test exclusions and show Docker mounts
-  status [path]       Show if exclusions are enabled/disabled for project
-  patterns            Show all exclusion patterns (global)
-  init [path] [opts]  Initialize project exclusions config
-  help                Show this help message
+  list [path]             Show files/dirs that would be excluded (per-repo in workspace)
+  test [path]             Test exclusions and show Docker volume mounts
+  status [path]           Show exclusion status for project (per-repo in workspace)
+  patterns [path]         Show all exclusion patterns with anchoring info
+  lockdown [path] [opts]  Generate exclude-everything config from project scan
+  help                    Show this help message
 
-Path Options (two ways):
-  [path]              Project path as command argument (defaults to current directory)
-  --path <path>       Project path as global option (works before 'exclusions')
-  --force             For init: recreate config from fresh template
+Options:
+  [path]              Project path (defaults to current directory)
+  --path <path>       Project path as global option (before 'exclusions')
+  --force             For lockdown: overwrite existing config (backs up first)
+  --workspace         For lockdown: apply to all RW workspace repos
 
 Examples:
-  # Using current directory:
+  # Single project:
   nyia exclusions list              # List excluded files in current dir
   nyia exclusions status            # Check current project status
-  
-  # Method 1 - Path as argument:
-  nyia exclusions test ~/project    # Test exclusions for a project
-  nyia exclusions init ~/project    # Initialize specific project
-  
-  # Method 2 - Path as global option:
-  nyia --path ~/project exclusions list      # List files in project
-  nyia --path ~/project exclusions status    # Check project status
-  nyia --path ~/project exclusions init      # Initialize project
+  nyia exclusions patterns          # Show patterns with anchoring info
+  nyia exclusions lockdown          # Scan project, generate exclude-everything config
+  nyia exclusions lockdown --force  # Overwrite existing config (backs up first)
 
-Note: Exclusions are auto-initialized on first nyia run in a project
+  # Specify project path:
+  nyia exclusions list ~/project
+  nyia exclusions lockdown ~/project
+  nyia --path ~/project exclusions status
+
+  # Workspace mode (auto-detected from workspace.conf):
+  nyia exclusions list              # Shows root + per-repo sections
+  nyia exclusions status            # Shows per-repo config status
+  nyia exclusions patterns          # Shows per-repo patterns
+  nyia exclusions lockdown --workspace  # Lockdown all RW repos (skips RO)
+
+Note: Built-in patterns auto-protect common sensitive files on every run.
+      Use 'lockdown' when you want to exclude everything and whitelist manually.
 
 Custom Exclusions:
-  Add your own patterns to .nyiakeeper/exclusions.conf in your project:
+  Add patterns to .nyiakeeper/exclusions.conf in your project.
+  Pattern matching follows gitignore conventions:
 
-    .env.local              # Exclude a specific file
-    secrets/                # Exclude a directory (trailing /)
-    *.backup                # Exclude by extension
+    .env.local              # Basename: matches anywhere in tree
+    secrets/                # Basename dir: any 'secrets/' anywhere
+    *.backup                # Glob: by extension anywhere
+    config/database.yml     # Root-anchored: only at project root (has /)
+    /src/                   # Root-anchored: explicit leading /
+    **/node_modules/        # Explicit anywhere: **/ prefix
 
   Override automatic exclusions with ! prefix (force-include):
 
     !.env.example           # Keep visible despite auto-exclusion
     !vendor/                # Keep directory visible
 
-  Run 'nyia exclusions init' to create the config, or edit it directly.
+  Run 'nyia exclusions lockdown' to generate an exclude-everything config.
+  Run 'nyia exclusions patterns' to see active patterns with anchoring info.
   See: docs/MOUNT_EXCLUSIONS.md for full documentation.
 
 To disable exclusions temporarily:
@@ -1163,8 +1525,8 @@ handle_exclusions_command() {
         patterns)
             exclusions_patterns "$@"
             ;;
-        init)
-            exclusions_init "$@"
+        lockdown)
+            exclusions_lockdown "$@"
             ;;
         help|--help|-h)
             exclusions_help

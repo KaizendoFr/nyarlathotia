@@ -49,10 +49,13 @@ docs/internal/
 **/node_modules/
 ```
 
-You can create this file manually or run:
+You can create this file manually, or use lockdown mode to auto-generate an
+exclude-everything config that you then whitelist:
 
 ```bash
-nyia exclusions init
+nyia exclusions lockdown              # Scan project, generate exclude-everything config
+nyia exclusions lockdown --force      # Overwrite existing config (backs up first)
+nyia exclusions lockdown --workspace  # Apply to all RW workspace repos
 ```
 
 ## Pattern Matching Rules
@@ -190,3 +193,19 @@ rm .nyiakeeper/.excluded-files.cache
 ```
 
 The next session will perform a fresh scan.
+
+## Git History Protection
+
+Mount exclusions protect the filesystem inside the container by replacing excluded files with placeholder stubs. However, `.git/` is mounted read-write (needed for git operations), so files committed to git history may still be accessible via git commands:
+
+- `git show HEAD:.env` — shows committed content
+- `git log -p -- .env` — shows diff history with content
+- `git cat-file -p <blob-hash>` — reads raw git objects
+
+**Mitigations:**
+
+1. **Awareness**: The `lockdown` command and all exclusion commands show a warning footer for git-backed projects.
+2. **Runtime enforcement**: A git wrapper script (when installed) intercepts dangerous read commands targeting excluded paths.
+3. **System prompt guidance**: AI assistants are instructed to never access excluded files via git history.
+
+For maximum security, avoid committing sensitive files to git in the first place. Use `.gitignore` alongside mount exclusions.
