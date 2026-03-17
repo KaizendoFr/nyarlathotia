@@ -241,7 +241,14 @@ WORKSPACE_TEMPLATE
         done
         print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
     fi
-    export WORKSPACE_MODE WORKSPACE_REPOS WORKSPACE_REPO_MODES
+
+    # Detect if workspace root is itself a git repository
+    WORKSPACE_ROOT_IS_GIT=false
+    if [[ "$WORKSPACE_MODE" == "true" ]] && git -C "$PROJECT_PATH" rev-parse --git-dir >/dev/null 2>&1; then
+        WORKSPACE_ROOT_IS_GIT=true
+        print_verbose "Workspace root is a git repository — branch safety enabled for root"
+    fi
+    export WORKSPACE_MODE WORKSPACE_REPOS WORKSPACE_REPO_MODES WORKSPACE_ROOT_IS_GIT
 
     # Auto-initialize project prompts directory (Git-style behavior)
     ensure_project_prompts_directory "$PROJECT_PATH"

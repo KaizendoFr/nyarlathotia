@@ -45,6 +45,35 @@ get_project_path() {
     realpath "$path"
 }
 
+# === WORKSPACE DETECTION FOR EXCLUSION COMMANDS ===
+
+# Source workspace library if available and not already loaded
+if ! declare -f is_workspace >/dev/null 2>&1; then
+    source "$(dirname "${BASH_SOURCE[0]}")/workspace.sh" 2>/dev/null || true
+fi
+
+# Returns workspace repos and modes for a project path, or empty if not workspace.
+# Usage: get_workspace_repos_for_exclusions "$project_path"
+# Sets: _WS_REPOS array, _WS_MODES array (empty if not workspace)
+get_workspace_repos_for_exclusions() {
+    local project_path="$1"
+    _WS_REPOS=()
+    _WS_MODES=()
+
+    if ! declare -f is_workspace >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! is_workspace "$project_path"; then
+        return 0
+    fi
+
+    if declare -f parse_workspace_repos >/dev/null 2>&1; then
+        mapfile -t _WS_REPOS < <(parse_workspace_repos "$project_path")
+        mapfile -t _WS_MODES < <(parse_workspace_modes "$project_path")
+    fi
+}
+
 # === CACHE MANAGEMENT FUNCTIONS ===
 
 
@@ -219,10 +248,11 @@ exclusions_list() {
                         SCAN_EXCLUDED_FILES+=("$rel_path")
                     fi
                 fi
-            done < <(find "$project_path" -maxdepth "$max_depth" -type f -path "*/$pattern" -print0 2>/dev/null)
+            done < <(find "$project_path" -maxdepth "$max_depth" -type f -path "$project_path/$pattern" -print0 2>/dev/null)
         done < <(get_user_exclusion_file_paths "$project_path")
 
         # Process user-defined directory path patterns (containing /) using find -path
+        # Root-anchored per gitignore semantics: match at project root only
         while IFS= read -r pattern; do
             [[ -z "$pattern" ]] && continue
             while IFS= read -r -d '' match; do
@@ -240,7 +270,7 @@ exclusions_list() {
                         SCAN_EXCLUDED_DIRS+=("$rel_path")
                     fi
                 fi
-            done < <(find "$project_path" -maxdepth "$max_depth" -type d -path "*/$pattern" -print0 2>/dev/null)
+            done < <(find "$project_path" -maxdepth "$max_depth" -type d -path "$project_path/$pattern" -print0 2>/dev/null)
         done < <(get_user_exclusion_dir_paths "$project_path")
 
         # Write results to cache for next time
@@ -295,6 +325,103 @@ exclusions_list() {
             print_info "Protected Nyia Keeper system: $system_files_count files, $system_dirs_count directories"
         fi
     fi
+
+    # Workspace mode: iterate repos and show per-repo results
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]]; then
+        local ws_total_files=0
+        local ws_total_dirs=0
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            local mode="${_WS_MODES[ri]:-rw}"
+            local repo_name
+            repo_name=$(basename "$repo")
+            [[ ! -d "$repo" ]] && continue
+
+            echo ""
+            echo "============================================="
+            print_header "  Repo: $repo_name ($mode)"
+            echo "============================================="
+
+            local repo_files=0
+            local repo_dirs=0
+            local max_depth="${EXCLUSION_MAX_DEPTH:-5}"
+
+            # Scan built-in file patterns
+            while IFS=' ' read -r pattern; do
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$repo/}"
+                    echo "  🔒 $rel_path"
+                    repo_files=$((repo_files + 1))
+                done < <(find "$repo" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+            done < <(get_exclusion_patterns "$repo" | tr ' ' '\n')
+
+            # Scan built-in dir patterns
+            while IFS=' ' read -r pattern; do
+                while IFS= read -r -d '' match; do
+                    local rel_path="${match#$repo/}"
+                    echo "  📁 $rel_path/"
+                    repo_dirs=$((repo_dirs + 1))
+                done < <(find "$repo" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+            done < <(get_exclusion_dirs "$repo" | tr ' ' '\n')
+
+            # Scan user-defined path patterns for this repo (if it has exclusions.conf)
+            if [[ -f "$repo/.nyiakeeper/exclusions.conf" ]]; then
+                while IFS= read -r pattern; do
+                    [[ -z "$pattern" ]] && continue
+                    while IFS= read -r -d '' match; do
+                        local rel_path="${match#$repo/}"
+                        echo "  🔒 $rel_path"
+                        repo_files=$((repo_files + 1))
+                    done < <(find "$repo" -maxdepth "$max_depth" -type f -path "$repo/$pattern" -print0 2>/dev/null)
+                done < <(get_user_exclusion_file_paths "$repo")
+
+                while IFS= read -r pattern; do
+                    [[ -z "$pattern" ]] && continue
+                    while IFS= read -r -d '' match; do
+                        local rel_path="${match#$repo/}"
+                        echo "  📁 $rel_path/"
+                        repo_dirs=$((repo_dirs + 1))
+                    done < <(find "$repo" -maxdepth "$max_depth" -type d -path "$repo/$pattern" -print0 2>/dev/null)
+                done < <(get_user_exclusion_dir_paths "$repo")
+
+                # Scan user basename patterns
+                while IFS= read -r pattern; do
+                    [[ -z "$pattern" ]] && continue
+                    while IFS= read -r -d '' match; do
+                        local rel_path="${match#$repo/}"
+                        echo "  🔒 $rel_path"
+                        repo_files=$((repo_files + 1))
+                    done < <(find "$repo" -maxdepth "$max_depth" -type f $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+                done < <(get_user_exclusion_patterns "$repo")
+
+                while IFS= read -r pattern; do
+                    [[ -z "$pattern" ]] && continue
+                    while IFS= read -r -d '' match; do
+                        local rel_path="${match#$repo/}"
+                        echo "  📁 $rel_path/"
+                        repo_dirs=$((repo_dirs + 1))
+                    done < <(find "$repo" -maxdepth "$max_depth" -type d $(get_find_case_args) "$pattern" -print0 2>/dev/null)
+                done < <(get_user_exclusion_dirs "$repo")
+            fi
+
+            if [[ $repo_files -eq 0 && $repo_dirs -eq 0 ]]; then
+                echo "  (no excluded files found)"
+            else
+                print_info "  Repo excluded: $repo_files files, $repo_dirs directories"
+            fi
+            ws_total_files=$((ws_total_files + repo_files))
+            ws_total_dirs=$((ws_total_dirs + repo_dirs))
+        done
+
+        echo ""
+        echo "============================================="
+        print_info "Workspace total: root + ${#_WS_REPOS[@]} repos"
+        print_info "  Root: $excluded_files_count files, $excluded_dirs_count directories"
+        print_info "  Repos: $ws_total_files files, $ws_total_dirs directories"
+    fi
 }
 
 # Test exclusions and show Docker volume arguments
@@ -342,6 +469,47 @@ exclusions_test() {
     
     echo ""
     print_success "Test complete - sensitive files would be replaced with explanations"
+
+    # Workspace mode: also test workspace volume args
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]] && declare -f build_workspace_volume_args >/dev/null 2>&1; then
+        echo ""
+        print_header "🧪 Workspace volume arguments (full workspace simulation)"
+        echo "============================================================"
+        echo ""
+
+        # Reset VOLUME_ARGS and call the workspace builder (matches launch-time flow)
+        VOLUME_ARGS=()
+        build_workspace_volume_args "$project_path" "/workspace" _WS_REPOS _WS_MODES
+
+        if [[ ${#VOLUME_ARGS[@]} -gt 0 ]]; then
+            local i=0
+            while [[ $i -lt ${#VOLUME_ARGS[@]} ]]; do
+                if [[ "${VOLUME_ARGS[$i]}" == "-v" ]]; then
+                    local mount_arg="${VOLUME_ARGS[$((i+1))]}"
+                    if [[ "$mount_arg" == *"/tmp/nyia-excluded-"* ]]; then
+                        echo "  -v $mount_arg  # 🔒 EXCLUDED"
+                    elif [[ "$mount_arg" == *"tmpfs"* ]] || [[ "${VOLUME_ARGS[$i]}" == "--tmpfs" ]]; then
+                        echo "  -v $mount_arg  # tmpfs"
+                    else
+                        echo "  -v $mount_arg"
+                    fi
+                    i=$((i + 2))
+                elif [[ "${VOLUME_ARGS[$i]}" == "--tmpfs" ]]; then
+                    echo "  --tmpfs ${VOLUME_ARGS[$((i+1))]}"
+                    i=$((i + 2))
+                else
+                    echo "  ${VOLUME_ARGS[$i]}"
+                    i=$((i + 1))
+                fi
+            done
+        else
+            echo "  No workspace volume arguments generated"
+        fi
+        echo ""
+        print_success "Workspace test complete"
+    fi
 }
 
 # Show exclusions status
@@ -377,6 +545,31 @@ exclusions_status() {
     echo "To disable temporarily:"
     echo "  ENABLE_MOUNT_EXCLUSIONS=false nyia-claude \"your prompt\""
     echo "  Or use: nyia-claude --disable-exclusions \"your prompt\""
+
+    # Workspace mode: show per-repo config status
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]]; then
+        echo ""
+        echo "Workspace Repositories:"
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            local mode="${_WS_MODES[ri]:-rw}"
+            local repo_name
+            repo_name=$(basename "$repo")
+            local repo_conf="$repo/.nyiakeeper/exclusions.conf"
+            if [[ -f "$repo_conf" ]]; then
+                local pat_count
+                pat_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
+                local ovr_count
+                ovr_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -c '^[[:space:]]*!' || true)
+                echo "  📄 $repo_name ($mode) — $pat_count patterns, $ovr_count overrides"
+            else
+                echo "  📍 $repo_name ($mode) — no exclusions.conf (built-in only)"
+            fi
+        done
+    fi
 }
 
 # Show all exclusion patterns
@@ -387,32 +580,109 @@ exclusions_patterns() {
     print_header "🔍 Exclusion Patterns"
     echo "==============================="
     echo ""
-    echo "Built-in file patterns (basename):"
+    echo "Built-in file patterns (basename — match anywhere):"
     echo "$(get_exclusion_patterns "$project_path")" | tr ' ' '\n' | sort | sed 's/^/  • /'
     echo ""
-    echo "Built-in directory patterns (basename):"
+    echo "Built-in directory patterns (basename — match anywhere):"
     echo "$(get_exclusion_dirs "$project_path")" | tr ' ' '\n' | sort | sed 's/^/  • /'
 
-    # Show user-defined path patterns if any exist
-    local user_file_paths
-    user_file_paths=$(get_user_exclusion_file_paths "$project_path")
-    local user_dir_paths
-    user_dir_paths=$(get_user_exclusion_dir_paths "$project_path")
+    # Show user-defined patterns with anchoring info using the classifier
+    local exclusions_file="$project_path/.nyiakeeper/exclusions.conf"
+    if [[ -f "$exclusions_file" ]]; then
+        local has_user_patterns="false"
+        local has_user_overrides="false"
+        local user_lines=""
+        local override_lines=""
 
-    if [[ -n "$user_file_paths" || -n "$user_dir_paths" ]]; then
-        echo ""
-        echo "User-defined path patterns (from exclusions.conf):"
-        if [[ -n "$user_file_paths" ]]; then
-            echo "$user_file_paths" | sort | sed 's/^/  • /'
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            line=$(echo "$line" | xargs)
+            [[ -z "$line" ]] && continue
+
+            local classified
+            classified=$(classify_user_pattern "$line")
+            local strategy="${classified%%:*}"
+            local rest="${classified#*:}"
+            local is_dir="${rest%%:*}"
+            rest="${rest#*:}"
+            local is_negation="${rest%%:*}"
+            local cleaned="${rest#*:}"
+
+            # Build display suffix
+            local dir_suffix=""
+            [[ "$is_dir" == "true" ]] && dir_suffix="/"
+            local anchor_label=""
+            if [[ "$strategy" == "root-anchored" ]]; then
+                # Check if user explicitly anchored with leading /
+                local raw_no_neg="$line"
+                [[ "$raw_no_neg" == "!"* ]] && raw_no_neg="${raw_no_neg#!}"
+                [[ "$raw_no_neg" == */ ]] && raw_no_neg="${raw_no_neg%/}"
+                if [[ "$raw_no_neg" == "/"* ]]; then
+                    anchor_label="root-anchored"
+                else
+                    # Implicitly root-anchored because it contains /
+                    anchor_label="root-anchored — use **/${cleaned}${dir_suffix} to match anywhere"
+                fi
+            else
+                anchor_label="anywhere"
+            fi
+
+            if [[ "$is_negation" == "true" ]]; then
+                has_user_overrides="true"
+                override_lines="${override_lines}  • !${cleaned}${dir_suffix} (${anchor_label})\n"
+            else
+                has_user_patterns="true"
+                user_lines="${user_lines}  • ${cleaned}${dir_suffix} (${anchor_label})\n"
+            fi
+        done < "$exclusions_file"
+
+        if [[ "$has_user_patterns" == "true" ]]; then
+            echo ""
+            echo "User-defined patterns (from exclusions.conf):"
+            echo -e "$user_lines" | sort | head -n -1
         fi
-        if [[ -n "$user_dir_paths" ]]; then
-            echo "$user_dir_paths" | sort | sed 's|^|  • |;s|$|/|'
+
+        if [[ "$has_user_overrides" == "true" ]]; then
+            echo ""
+            echo "User-defined overrides (force-include):"
+            echo -e "$override_lines" | sort | head -n -1
         fi
+    fi
+
+    # Workspace mode: show per-repo user patterns
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]]; then
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            local mode="${_WS_MODES[ri]:-rw}"
+            local repo_name
+            repo_name=$(basename "$repo")
+            local repo_conf="$repo/.nyiakeeper/exclusions.conf"
+            if [[ -f "$repo_conf" ]]; then
+                echo ""
+                echo "Repo: $repo_name ($mode) — user patterns:"
+                while IFS= read -r line; do
+                    [[ -z "$line" ]] && continue
+                    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+                    line=$(echo "$line" | xargs)
+                    [[ -z "$line" ]] && continue
+                    local classified
+                    classified=$(classify_user_pattern "$line")
+                    local strategy="${classified%%:*}"
+                    local anchor_label="anywhere"
+                    [[ "$strategy" == "root-anchored" ]] && anchor_label="root-anchored"
+                    echo "  • $line ($anchor_label)"
+                done < "$repo_conf"
+            fi
+        done
     fi
 
     echo ""
     print_info "Built-in patterns are hardcoded for security"
-    print_info "To modify: edit lib/mount-exclusions.sh functions"
+    print_info "Pattern rules: no '/' = anywhere, contains '/' = root-anchored"
     print_info "To override: use .nyiakeeper/exclusions.conf with ! prefix"
 }
 
@@ -420,12 +690,17 @@ exclusions_patterns() {
 exclusions_init() {
     local project_path=""
     local force_mode="false"
-    
+    local all_mode="false"
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --force)
                 force_mode="true"
+                shift
+                ;;
+            --all)
+                all_mode="true"
                 shift
                 ;;
             *)
@@ -436,9 +711,63 @@ exclusions_init() {
                 ;;
         esac
     done
-    
+
     # Get validated project path
     project_path=$(get_project_path "$project_path")
+
+    # Workspace --all mode: init all repos that lack exclusions.conf
+    if [[ "$all_mode" == "true" ]]; then
+        local _WS_REPOS _WS_MODES
+        get_workspace_repos_for_exclusions "$project_path"
+        if [[ ${#_WS_REPOS[@]} -eq 0 ]]; then
+            print_info "Not a workspace — use 'nyia exclusions init' without --all"
+            return 0
+        fi
+        # Init root if needed
+        exclusions_init "$project_path"
+        # Init each repo
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            [[ ! -d "$repo" ]] && continue
+            echo ""
+            exclusions_init "$repo"
+        done
+        return 0
+    fi
+
+    # Workspace summary mode: no explicit path, workspace detected, show status table
+    local _WS_REPOS _WS_MODES
+    get_workspace_repos_for_exclusions "$project_path"
+    if [[ ${#_WS_REPOS[@]} -gt 0 ]] && [[ -f "$project_path/.nyiakeeper/exclusions.conf" ]] && [[ "$force_mode" != "true" ]]; then
+        print_info "Workspace exclusions summary:"
+        echo ""
+        echo "  Root: $project_path"
+        local root_conf="$project_path/.nyiakeeper/exclusions.conf"
+        local root_pats
+        root_pats=$(grep -v '^#' "$root_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
+        echo "    📄 exclusions.conf — $root_pats patterns"
+        echo ""
+        local ri
+        for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
+            local repo="${_WS_REPOS[ri]}"
+            local mode="${_WS_MODES[ri]:-rw}"
+            local repo_name
+            repo_name=$(basename "$repo")
+            local repo_conf="$repo/.nyiakeeper/exclusions.conf"
+            if [[ -f "$repo_conf" ]]; then
+                local pat_count
+                pat_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
+                echo "  📄 $repo_name ($mode) — $pat_count patterns"
+            else
+                echo "  📍 $repo_name ($mode) — no config (built-in only)"
+            fi
+        done
+        echo ""
+        echo "Use 'nyia exclusions init <repo-path>' to init a specific repo"
+        echo "Use 'nyia exclusions init --all' to init all repos at once"
+        return 0
+    fi
     local nyia_dir="$project_path/.nyiakeeper"
     local exclusions_file="$nyia_dir/exclusions.conf"
     
@@ -620,24 +949,30 @@ EOF
 # Nyia Keeper Mount Exclusions Configuration
 # Project-specific patterns to exclude from Docker mounts
 #
-# Two pattern types:
-#   Basename patterns (no /): matched with find -name (case-insensitive on macOS)
-#   Path patterns (with /):   matched with find -path (case-sensitive on all platforms)
+# Pattern matching follows gitignore conventions:
 #
-# Examples:
-# .env.local              # Basename: exclude file by name anywhere
-# secrets/                # Basename: exclude directory by name anywhere
-# *.backup                # Basename: exclude by extension
-# config/database.yml     # Path: exclude exact relative path
-# config/*.yml            # Path: exclude with glob in path
-# docs/internal/          # Path: exclude specific directory path
+#   .env                   # Matches .env ANYWHERE in the tree (no path separator)
+#   secrets/               # Matches any directory named 'secrets' anywhere
+#   *.backup               # Matches by extension anywhere (glob)
+#   config/database.yml    # Matches ONLY at project root (has path separator)
+#   /src/                  # Matches ONLY root-level src/ (leading /)
+#   **/node_modules/       # Matches node_modules/ ANYWHERE (explicit **/  prefix)
 #
-# Override global exclusions with ! prefix:
-# !.env.example           # Force include this file
-# !config/database.yml    # Force include specific path
+# Override global exclusions with ! prefix (same anchoring rules apply):
+#   !.env.example          # Force include anywhere (basename)
+#   !config/database.yml   # Force include at root only (root-anchored)
+#   !**/vendor/            # Force include anywhere (explicit)
 #
-# Note: Global security patterns are always applied first
-# This file adds additional project-specific exclusions
+# Key rules:
+#   - No '/' in pattern  → matches anywhere (basename matching)
+#   - Contains '/'       → anchored to project root
+#   - Leading '/'        → explicitly root-anchored
+#   - '**/' prefix       → explicitly match anywhere
+#   - Trailing '/'       → directory only
+#   - '#' at line start  → comment
+#
+# Note: Built-in security patterns (200+) are always applied first.
+# This file adds additional project-specific exclusions.
 
 # Your project-specific exclusions:
 

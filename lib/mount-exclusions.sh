@@ -90,6 +90,69 @@ EOF
     fi
 }
 
+# Classify a user exclusion pattern using gitignore-like semantics.
+# Input:  raw line from exclusions.conf (already stripped of comments/whitespace)
+# Output: prints "strategy:is_dir:is_negation:cleaned_pattern"
+#   strategy:  "basename" (match anywhere) or "root-anchored" (root-level only)
+#   is_dir:    "true" if trailing / was present (directory-only)
+#   is_negation: "true" if ! prefix was present (override/force-include)
+#   cleaned_pattern: pattern with prefixes/suffixes stripped
+#
+# Classification rules (gitignore-compliant):
+#   1. Strip ! prefix → negation flag
+#   2. Strip trailing / → is_dir flag
+#   3. **/ prefix → strip, strategy = "basename"
+#   4. Leading / → strip, strategy = "root-anchored"
+#   5. Contains / → strategy = "root-anchored"
+#   6. No / → strategy = "basename"
+#
+# Note: wildcard * can cross path segments in find -path (known divergence from
+# pure gitignore FNM_PATHNAME). Acceptable for exclusion use cases.
+classify_user_pattern() {
+    local raw="$1"
+    local is_negation="false"
+    local is_dir="false"
+    local strategy="basename"
+
+    # Step 1: Detect and strip ! prefix
+    if [[ "$raw" == "!"* ]]; then
+        is_negation="true"
+        raw="${raw#!}"
+    fi
+
+    # Step 2: Detect and strip trailing /
+    if [[ "$raw" == */ ]]; then
+        is_dir="true"
+        raw="${raw%/}"
+    fi
+
+    # Step 3: **/ prefix → basename (explicit match-anywhere)
+    if [[ "$raw" == "**/"* ]]; then
+        raw="${raw#\*\*/}"
+        strategy="basename"
+        echo "${strategy}:${is_dir}:${is_negation}:${raw}"
+        return 0
+    fi
+
+    # Step 4: Leading / → root-anchored (explicit)
+    if [[ "$raw" == "/"* ]]; then
+        raw="${raw#/}"
+        strategy="root-anchored"
+        echo "${strategy}:${is_dir}:${is_negation}:${raw}"
+        return 0
+    fi
+
+    # Step 5: Contains / → root-anchored (implicit, gitignore convention)
+    if [[ "$raw" == */* ]]; then
+        strategy="root-anchored"
+        echo "${strategy}:${is_dir}:${is_negation}:${raw}"
+        return 0
+    fi
+
+    # Step 6: No / → basename (match anywhere)
+    echo "${strategy}:${is_dir}:${is_negation}:${raw}"
+}
+
 # Get user-defined exclusion patterns from .nyiakeeper/exclusions.conf
 get_user_exclusion_patterns() {
     local project_path="${1:-$(pwd)}"
@@ -544,13 +607,26 @@ is_path_overridden() {
 
     for override in "${overrides[@]}"; do
         [[ -z "$override" ]] && continue
-        # Exact relative path match (override contains a slash)
-        if [[ "$override" == */* ]] && [[ "$override" == "$rel_path" ]]; then
-            return 0
-        fi
-        # Basename match (no slash in override = match any path with that name)
-        if [[ "$override" != */* ]] && [[ "$override" == "$base" ]]; then
-            return 0
+        # Use classifier to determine anchoring strategy for this override
+        local classified
+        classified=$(classify_user_pattern "!$override")
+        local strategy="${classified%%:*}"
+
+        if [[ "$strategy" == "root-anchored" ]]; then
+            # Root-anchored override: match against relative path from project root
+            # The cleaned pattern is after the last : in classification output
+            local cleaned="${classified##*:}"
+            # Use glob matching for wildcards
+            # shellcheck disable=SC2254
+            if [[ "$rel_path" == $cleaned ]]; then
+                return 0
+            fi
+        else
+            # Basename override: match against basename only
+            # shellcheck disable=SC2254
+            if [[ "$base" == $override ]]; then
+                return 0
+            fi
         fi
     done
     return 1
@@ -796,14 +872,15 @@ create_volume_args() {
         fi
 
         # User-defined directory path patterns (containing /, need find -path)
+        # Root-anchored per gitignore semantics: match at project root only
         local user_dir_paths=$(get_user_exclusion_dir_paths "$project_path")
         if [[ -n "$user_dir_paths" ]]; then
-            print_verbose "User directory path patterns: $user_dir_paths"
+            print_verbose "User directory path patterns (root-anchored): $user_dir_paths"
             local -a user_dir_path_expr=()
             while IFS= read -r pattern; do
                 [[ -z "$pattern" ]] && continue
                 [[ ${#user_dir_path_expr[@]} -gt 0 ]] && user_dir_path_expr+=("-o")
-                user_dir_path_expr+=("-path" "*/$pattern")
+                user_dir_path_expr+=("-path" "$project_path/$pattern")
             done <<< "$user_dir_paths"
 
             if [[ ${#user_dir_path_expr[@]} -gt 0 ]]; then
@@ -877,14 +954,15 @@ create_volume_args() {
         fi
 
         # User-defined file path patterns (containing /, need find -path)
+        # Root-anchored per gitignore semantics: match at project root only
         local user_file_paths=$(get_user_exclusion_file_paths "$project_path")
         if [[ -n "$user_file_paths" ]]; then
-            print_verbose "User file path patterns: $user_file_paths"
+            print_verbose "User file path patterns (root-anchored): $user_file_paths"
             local -a user_file_path_expr=()
             while IFS= read -r pattern; do
                 [[ -z "$pattern" ]] && continue
                 [[ ${#user_file_path_expr[@]} -gt 0 ]] && user_file_path_expr+=("-o")
-                user_file_path_expr+=("-path" "*/$pattern")
+                user_file_path_expr+=("-path" "$project_path/$pattern")
             done <<< "$user_file_paths"
 
             if [[ ${#user_file_path_expr[@]} -gt 0 ]]; then
@@ -1133,15 +1211,16 @@ append_repo_volume_args() {
     fi
 
     # === Phase 3b: User-defined directory path patterns (containing /) ===
+    # Root-anchored per gitignore semantics: match at repo root only
     local user_dir_paths
     user_dir_paths=$(get_user_exclusion_dir_paths "$repo_path")
     if [[ -n "$user_dir_paths" ]]; then
-        print_verbose "Repo user directory path patterns: $user_dir_paths"
+        print_verbose "Repo user directory path patterns (root-anchored): $user_dir_paths"
         local -a user_dir_path_expr=()
         while IFS= read -r pattern; do
             [[ -z "$pattern" ]] && continue
             [[ ${#user_dir_path_expr[@]} -gt 0 ]] && user_dir_path_expr+=("-o")
-            user_dir_path_expr+=("-path" "*/$pattern")
+            user_dir_path_expr+=("-path" "$repo_path/$pattern")
         done <<< "$user_dir_paths"
 
         if [[ ${#user_dir_path_expr[@]} -gt 0 ]]; then
@@ -1214,15 +1293,16 @@ append_repo_volume_args() {
     fi
 
     # === Phase 4b: User-defined file path patterns (containing /) ===
+    # Root-anchored per gitignore semantics: match at repo root only
     local user_file_paths
     user_file_paths=$(get_user_exclusion_file_paths "$repo_path")
     if [[ -n "$user_file_paths" ]]; then
-        print_verbose "Repo user file path patterns: $user_file_paths"
+        print_verbose "Repo user file path patterns (root-anchored): $user_file_paths"
         local -a user_file_path_expr=()
         while IFS= read -r pattern; do
             [[ -z "$pattern" ]] && continue
             [[ ${#user_file_path_expr[@]} -gt 0 ]] && user_file_path_expr+=("-o")
-            user_file_path_expr+=("-path" "*/$pattern")
+            user_file_path_expr+=("-path" "$repo_path/$pattern")
         done <<< "$user_file_paths"
 
         if [[ ${#user_file_path_expr[@]} -gt 0 ]]; then

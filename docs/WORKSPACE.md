@@ -269,6 +269,36 @@ Branch synchronization failed on an RW repo. Common causes:
 
 All RW repos will be rolled back to their original branches when this happens. RO repos are never affected.
 
+## Workspace Root as a Project
+
+If your workspace root directory contains a `.git/` directory, Nyia automatically treats it as a full project with branch safety (assistant branch creation, cleanup, and sync) alongside managing your workspace repos.
+
+If the root has no `.git/`, it's treated as an orchestration directory only — branch operations are skipped for the root and only applied to workspace repos.
+
+This is automatic — no extra flags needed.
+
+## Unsupported: Subdirectories of Git Repositories
+
+Adding a subdirectory of a git repository as a workspace entry (e.g., `~/monorepo/packages/my-service rw`) is not supported.
+
+**Why**: Inside the Docker container, only the specified directory is mounted. The parent repository's `.git/` directory is not included, which means:
+- `git status`, `git diff`, `git blame`, `git log` — all fail
+- No assistant branch creation or cleanup (no safety net)
+- The AI assistant loses all git context for that directory
+
+**Workaround**: Mount the full repository and use nyia's exclusion system to control what the AI can access:
+1. Add the full repo: `~/monorepo    rw`
+2. Create exclusions: `nyia exclusions init ~/monorepo`
+3. Edit `~/monorepo/.nyiakeeper/exclusions.conf` to exclude directories you don't want exposed (e.g., `other-packages/`, `infrastructure/`)
+4. Verify: `nyia exclusions list ~/monorepo`
+
+This gives you scoped access WITH full git functionality.
+
+Alternatively, add the subdirectory as read-only if you don't need git operations:
+```
+~/monorepo/packages/my-service    ro
+```
+
 ## Best Practices
 
 1. **Keep workspace.conf in version control** - Share the workspace setup with your team

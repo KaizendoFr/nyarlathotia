@@ -1512,14 +1512,15 @@ check_requirements_fast() {
 
     # Critical checks that must pass
     check_git_available || exit_code=1
-    if [[ "$workspace_mode" != "true" ]]; then
+    # Skip git check only for workspace roots that are NOT git repos
+    if [[ "$workspace_mode" != "true" ]] || [[ "${WORKSPACE_ROOT_IS_GIT:-false}" == "true" ]]; then
         check_git_repository || exit_code=1
     fi
     check_docker_available || exit_code=1
     check_directory_permissions "$project_path" || exit_code=1
 
     # Warnings (don't fail)
-    if [[ "$workspace_mode" != "true" ]]; then
+    if [[ "$workspace_mode" != "true" ]] || [[ "${WORKSPACE_ROOT_IS_GIT:-false}" == "true" ]]; then
         check_git_clean_state
     fi
     check_user_mapping
@@ -2347,6 +2348,7 @@ run_debug_shell() {
         docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
         docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
         docker_env_args+=(-e NYIA_WORKSPACE_MODES="$(printf '%s\n' "${WORKSPACE_REPO_MODES[@]}")")
+        docker_env_args+=(-e NYIA_WORKSPACE_ROOT_IS_GIT="${WORKSPACE_ROOT_IS_GIT:-false}")
     fi
 
     # Create environment file for Docker
@@ -2554,6 +2556,7 @@ run_docker_container() {
         docker_env_args+=(-e NYIA_WORKSPACE_MODE="true")
         docker_env_args+=(-e NYIA_WORKSPACE_REPOS="$(printf '%s\n' "${WORKSPACE_REPOS[@]}")")
         docker_env_args+=(-e NYIA_WORKSPACE_MODES="$(printf '%s\n' "${WORKSPACE_REPO_MODES[@]}")")
+        docker_env_args+=(-e NYIA_WORKSPACE_ROOT_IS_GIT="${WORKSPACE_ROOT_IS_GIT:-false}")
     fi
 
     # Create environment file for Docker
@@ -3482,7 +3485,39 @@ run_assistant() {
                 fi
             fi
         else
-            # --- Workspace mode: root has no git — branch checks on each RW repo ---
+            # --- Workspace mode ---
+
+            # If workspace root IS a git repo, apply branch safety to root
+            if [[ "${WORKSPACE_ROOT_IS_GIT:-false}" == "true" ]]; then
+                if [[ -n "$work_branch" ]]; then
+                    if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "$work_branch" "${CREATE_BRANCH:-false}"; then
+                        print_error "Failed to create or switch to branch"
+                        exit 1
+                    fi
+                elif [[ "${NYIA_AUTO_BRANCH:-false}" == "true" ]]; then
+                    if ! create_assistant_branch "$assistant_name" "$project_path" "$base_branch" "" "${CREATE_BRANCH:-false}"; then
+                        print_error "Failed to create or switch to branch"
+                        exit 1
+                    fi
+                else
+                    local root_current
+                    root_current=$(get_current_branch "$project_path")
+                    if [[ -z "$root_current" || "$root_current" == "HEAD" ]]; then
+                        print_error "Workspace root is in detached HEAD state"
+                        print_info "Checkout a branch first: git checkout <branch-name>"
+                        exit 1
+                    fi
+                    if is_protected_branch "$root_current" "$project_path"; then
+                        prompt_branch_on_protected "$assistant_name" "$root_current" "$project_path"
+                    else
+                        print_info "Working on current branch (workspace root): $root_current"
+                    fi
+                fi
+                current_work_branch=$(get_current_branch "$project_path")
+                export NYIA_WORK_BRANCH="$current_work_branch"
+            fi
+
+            # Branch checks on each RW workspace repo
             # Git presence already validated by verify_workspace_repos() upstream
             local i
             for i in "${!WORKSPACE_REPOS[@]}"; do
@@ -3516,9 +3551,11 @@ run_assistant() {
             done
 
             # Set work branch for container metadata
-            # --work-branch if specified, else "workspace" sentinel (no single branch in workspace mode)
-            current_work_branch="${work_branch:-workspace}"
-            export NYIA_WORK_BRANCH="$current_work_branch"
+            # Root-is-git already set NYIA_WORK_BRANCH above; non-git root uses sentinel
+            if [[ "${WORKSPACE_ROOT_IS_GIT:-false}" != "true" ]]; then
+                current_work_branch="${work_branch:-workspace}"
+                export NYIA_WORK_BRANCH="$current_work_branch"
+            fi
 
             # Workspace warn/sync (Plan 185) — only meaningful with --work-branch
             # Without --work-branch, each repo keeps its own branch — nothing to compare
@@ -3944,8 +3981,8 @@ capture_original_branches() {
     declare -gA ORIGINAL_BRANCHES
     ORIGINAL_BRANCHES=()
 
-    # Capture main project — skip workspace root (no git)
-    if [[ "$WORKSPACE_MODE" != "true" ]]; then
+    # Capture main project — skip workspace root only if it's NOT a git repo
+    if [[ "$WORKSPACE_MODE" != "true" ]] || [[ "${WORKSPACE_ROOT_IS_GIT:-false}" == "true" ]]; then
         ORIGINAL_BRANCHES["$main_project"]=$(get_current_branch "$main_project")
         print_verbose "Captured original branch for main: ${ORIGINAL_BRANCHES[$main_project]}"
     else
@@ -4066,8 +4103,8 @@ sync_workspace_branches() {
     BRANCH_WAS_CREATED=()
 
     # Main project already has the branch (created by create_assistant_branch)
-    # Skip workspace root — it has no git, tracking it would break rollback
-    if [[ "$WORKSPACE_MODE" != "true" ]]; then
+    # Skip workspace root only if it's NOT a git repo
+    if [[ "$WORKSPACE_MODE" != "true" ]] || [[ "${WORKSPACE_ROOT_IS_GIT:-false}" == "true" ]]; then
         # Use MAIN_BRANCH_PRE_EXISTED flag set by run_assistant before create_assistant_branch
         REPOS_WITH_NEW_BRANCH+=("$main_project")
         if [[ "${MAIN_BRANCH_PRE_EXISTED:-false}" == "true" ]]; then

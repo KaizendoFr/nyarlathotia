@@ -254,6 +254,28 @@ verify_workspace_repos() {
             else
                 echo "ERROR: Workspace repo is not a git repository: $repo" >&2
             fi
+
+            # Detect if this is a subdirectory of a git repo — give targeted guidance
+            local parent_git_root
+            parent_git_root=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null || true)
+            if [[ -n "$parent_git_root" ]]; then
+                echo "" >&2
+                echo "This directory is inside a git repository at: $parent_git_root" >&2
+                echo "" >&2
+                echo "Subdirectories of git repos are not supported as workspace entries because" >&2
+                echo "the AI assistant needs .git/ access for status, diff, blame, and branch" >&2
+                echo "operations. Without it, git is completely non-functional inside the container." >&2
+                echo "" >&2
+                echo "Workarounds:" >&2
+                echo "  1. Add the full repository and use exclusions to scope AI access:" >&2
+                echo "       $parent_git_root    rw" >&2
+                echo "     Then edit $parent_git_root/.nyiakeeper/exclusions.conf to exclude dirs." >&2
+                echo "     Run 'nyia exclusions list $parent_git_root' to see what gets excluded." >&2
+                echo "  2. Add the subdirectory as read-only (no git needed for RO):" >&2
+                echo "       $repo    ro" >&2
+            else
+                echo "Initialize git first: cd '$repo' && git init && git add . && git commit -m 'init'" >&2
+            fi
             return 1
         fi
     done

@@ -33,25 +33,57 @@ The full list is defined in `lib/mount-exclusions.sh` (functions `get_exclusion_
 Add your own exclusion patterns in `.nyiakeeper/exclusions.conf` at the root of your project:
 
 ```
-# File patterns (glob syntax)
+# Basename patterns — match anywhere in the tree
 *.secret
 my-local-config.json
-
-# Directory patterns (trailing / optional)
 my-secrets/
-local-data
-```
 
-- Lines starting with `#` are comments.
-- File patterns use glob matching (e.g., `*.secret` matches any file ending in `.secret`).
-- Directory patterns end with `/` (the trailing slash is optional for directories listed on their own line without a glob).
-- Patterns are matched by basename. A pattern like `*.secret` will match at any depth in your project.
+# Root-anchored patterns — match only at project root
+config/database.yml
+docs/internal/
+
+# Explicit root-anchor with leading /
+/src/sensitive.key
+
+# Explicit anywhere-match with **/ prefix
+**/node_modules/
+```
 
 You can create this file manually or run:
 
 ```bash
 nyia exclusions init
 ```
+
+## Pattern Matching Rules
+
+Patterns in `exclusions.conf` follow **gitignore conventions**:
+
+| Pattern | Matching | Scope |
+|---|---|---|
+| `.env` | Basename | Matches `.env` at any depth |
+| `secrets/` | Basename (dir) | Matches any directory named `secrets` anywhere |
+| `*.backup` | Basename (glob) | Matches by extension anywhere |
+| `config/database.yml` | Root-anchored | Matches only `<root>/config/database.yml` |
+| `/src/` | Root-anchored | Matches only `<root>/src/` |
+| `**/node_modules/` | Basename (explicit) | Matches `node_modules/` at any depth |
+
+**Key rules:**
+
+- **No `/` in pattern** (or only trailing `/`): matches anywhere by basename.
+- **Contains `/`** (not just trailing): anchored to the project root.
+- **Leading `/`**: explicitly root-anchored (even without other `/`).
+- **`**/` prefix**: explicitly match anywhere (overrides root-anchoring).
+- **Trailing `/`**: directory-only matching.
+- **`#` at line start**: comment.
+
+**Wildcards:** `*`, `?`, and `[...]` work inside patterns. Note that `*` can cross path
+segments (unlike pure gitignore where `*` stops at `/`). For most exclusion configs this
+makes no practical difference.
+
+**Migration note:** If you previously used path patterns like `config/database.yml` expecting
+them to match at any depth, they are now root-anchored (match only at project root). To
+restore the previous match-anywhere behavior, prefix with `**/`: `**/config/database.yml`.
 
 ## Override Patterns
 
@@ -64,14 +96,18 @@ To force-include a file or directory that is hidden by default, prefix the patte
 # Force-include a specific key file
 !deploy-key.pem
 
-# Force-include by exact relative path
+# Force-include at project root only (root-anchored)
 !config/credentials.json
+
+# Force-include anywhere (explicit)
+!**/vendor/
 ```
 
-Override matching works in two modes:
+Override patterns follow the **same anchoring rules** as exclusion patterns:
 
-- **Basename match** -- if the override has no `/`, it matches any file or directory with that name anywhere in the project.
-- **Path match** -- if the override contains a `/`, it must match the exact relative path from the project root.
+- **Basename override** (`!.env.example`): force-includes matching files anywhere.
+- **Root-anchored override** (`!config/credentials.json`): force-includes only at project root.
+- **Explicit anywhere override** (`!**/vendor/`): force-includes at any depth.
 
 ## Workspace Mode
 
