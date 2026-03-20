@@ -240,6 +240,10 @@ WORKSPACE_TEMPLATE
             fi
         done
         print_status "Workspace mode: ${#WORKSPACE_REPOS[@]} repositories ($rw_count rw, $ro_count ro)"
+        local _ws_i
+        for ((_ws_i=0; _ws_i<${#WORKSPACE_REPOS[@]}; _ws_i++)); do
+            echo "  $(basename "${WORKSPACE_REPOS[_ws_i]}") (${WORKSPACE_REPOS[_ws_i]}) [${WORKSPACE_REPO_MODES[_ws_i]:-rw}]" >&2
+        done
     fi
 
     # Detect if workspace root is itself a git repository

@@ -3532,8 +3532,9 @@ run_assistant() {
                 branch=$(get_current_branch "$repo")
 
                 # Detached HEAD check (always, regardless of --work-branch)
+                # Mode always rw here — RO repos skipped at top of loop
                 if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
-                    print_error "Workspace repo '$(basename "$repo")' is in detached HEAD state"
+                    print_error "Workspace repo '$(basename "$repo")' ($repo) is in detached HEAD state"
                     print_info "Checkout a branch first: cd '$repo' && git checkout <branch-name>"
                     exit 1
                 fi
@@ -3948,7 +3949,7 @@ warn_workspace_branch_mismatch() {
         repo_branch=$(get_current_branch "$repo" 2>/dev/null) || continue
 
         if [[ "$repo_branch" != "$work_branch" ]]; then
-            mismatches+=("  $(basename "$repo") ($repo): $repo_branch")
+            mismatches+=("  $(basename "$repo") ($repo) [$mode]: $repo_branch")
         fi
     done
 

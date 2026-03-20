@@ -343,7 +343,7 @@ exclusions_list() {
 
             echo ""
             echo "============================================="
-            print_header "  Repo: $repo_name ($mode)"
+            print_header "  Repo: $repo_name ($repo) [$mode]"
             echo "============================================="
 
             local repo_files=0
@@ -573,9 +573,9 @@ exclusions_status() {
                 pat_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
                 local ovr_count
                 ovr_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -c '^[[:space:]]*!' || true)
-                echo "  📄 $repo_name ($mode) — $pat_count patterns, $ovr_count overrides"
+                echo "  📄 $repo_name ($repo) [$mode] — $pat_count patterns, $ovr_count overrides"
             else
-                echo "  📍 $repo_name ($mode) — no exclusions.conf (built-in only)"
+                echo "  📍 $repo_name ($repo) [$mode] — no exclusions.conf (built-in only)"
             fi
         done
     fi
@@ -675,7 +675,7 @@ exclusions_patterns() {
             local repo_conf="$repo/.nyiakeeper/exclusions.conf"
             if [[ -f "$repo_conf" ]]; then
                 echo ""
-                echo "Repo: $repo_name ($mode) — user patterns:"
+                echo "Repo: $repo_name ($repo) [$mode] — user patterns:"
                 while IFS= read -r line; do
                     [[ -z "$line" ]] && continue
                     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -772,9 +772,9 @@ exclusions_init() {
             if [[ -f "$repo_conf" ]]; then
                 local pat_count
                 pat_count=$(grep -v '^#' "$repo_conf" 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^[[:space:]]*!' | wc -l)
-                echo "  📄 $repo_name ($mode) — $pat_count patterns"
+                echo "  📄 $repo_name ($repo) [$mode] — $pat_count patterns"
             else
-                echo "  📍 $repo_name ($mode) — no config (built-in only)"
+                echo "  📍 $repo_name ($repo) [$mode] — no config (built-in only)"
             fi
         done
         echo ""
@@ -1220,7 +1220,7 @@ check_workspace_gate() {
         local repo_name
         repo_name=$(basename "${_WS_REPOS[ri]}")
         local mode="${_WS_MODES[ri]:-rw}"
-        echo "    - $repo_name ($mode)"
+        echo "    - $repo_name (${_WS_REPOS[ri]}) [$mode]"
     done
     echo ""
     echo "  Add --workspace to lockdown all RW repos, or specify a single repo path:"
@@ -1239,14 +1239,11 @@ print_workspace_info_header() {
 
     [[ ${#_WS_REPOS[@]} -eq 0 ]] && return 0
 
-    local names=()
+    echo "Workspace: ${#_WS_REPOS[@]} repos"
     local ri
     for ((ri=0; ri<${#_WS_REPOS[@]}; ri++)); do
-        names+=("$(basename "${_WS_REPOS[ri]}")")
+        echo "  $(basename "${_WS_REPOS[ri]}") (${_WS_REPOS[ri]}) [${_WS_MODES[ri]:-rw}]"
     done
-    local name_list
-    name_list=$(IFS=', '; echo "${names[*]}")
-    echo "Workspace: ${#_WS_REPOS[@]} repos ($name_list)"
 }
 
 # Generate lockdown exclusions.conf for a single project
@@ -1403,7 +1400,7 @@ exclusions_lockdown() {
 
             if [[ "$mode" == "ro" ]]; then
                 echo ""
-                print_info "Skipping $repo_name (read-only)"
+                print_info "Skipping $repo_name ($repo) [ro]"
                 continue
             fi
 
